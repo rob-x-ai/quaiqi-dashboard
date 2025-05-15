@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { getLastUpdatedTime } from "@/services/cryptoApi";
@@ -27,10 +26,8 @@ export function Header() {
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b">
       <div className="container flex items-center justify-between h-16">
         <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-crypto-quai to-crypto-qi flex items-center justify-center">
-            <span className="text-white font-bold text-sm">Q</span>
-          </div>
-          <span className="font-bold text-xl">QUAI/QI</span>
+          <img src="/Logo.svg" alt="QUAI Logo" className="w-8 h-8" />
+          <span className="font-bold text-xl">QUAI-QI</span>
         </div>
         <div className="flex items-center space-x-4">
           {lastUpdated && (

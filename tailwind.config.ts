@@ -1,4 +1,3 @@
-
 import type { Config } from "tailwindcss";
 
 export default {
@@ -20,43 +19,53 @@ export default {
     },
     extend: {
       colors: {
-        border: 'hsl(var(--border))',
-        input: 'hsl(var(--input))',
-        ring: 'hsl(var(--ring))',
-        background: 'hsl(var(--background))',
-        foreground: 'hsl(var(--foreground))',
+        // Brand colors
+        'quai-red': '#E22901',
+        'pure-black': '#000000',
+        'dark-grey': '#1a1a1a',
+        'mid-grey': '#262626',
+        'light-grey': '#404040',
+        'off-white': '#E2E2E2',
+        'pure-white': '#FFFFFF',
+        
+        // System colors mapped to brand colors
+        border: '#1a1a1a', // dark-grey
+        input: '#1a1a1a', // dark-grey
+        ring: '#E22901', // QUAI_RED
+        background: '#000000', // PURE_BLACK
+        foreground: '#FFFFFF', // PURE_WHITE
         primary: {
-          DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))'
+          DEFAULT: '#E22901', // QUAI_RED
+          foreground: '#FFFFFF' // PURE_WHITE
         },
         secondary: {
-          DEFAULT: 'hsl(var(--secondary))',
-          foreground: 'hsl(var(--secondary-foreground))'
+          DEFAULT: '#1a1a1a', // dark-grey
+          foreground: '#FFFFFF' // PURE_WHITE
         },
         destructive: {
-          DEFAULT: 'hsl(var(--destructive))',
-          foreground: 'hsl(var(--destructive-foreground))'
+          DEFAULT: '#E22901', // QUAI_RED
+          foreground: '#FFFFFF' // PURE_WHITE
         },
         muted: {
-          DEFAULT: 'hsl(var(--muted))',
-          foreground: 'hsl(var(--muted-foreground))'
+          DEFAULT: '#262626', // mid-grey
+          foreground: '#E2E2E2' // OFF_WHITE
         },
         accent: {
-          DEFAULT: 'hsl(var(--accent))',
-          foreground: 'hsl(var(--accent-foreground))'
+          DEFAULT: '#404040', // light-grey
+          foreground: '#FFFFFF' // PURE_WHITE
         },
         popover: {
-          DEFAULT: 'hsl(var(--popover))',
-          foreground: 'hsl(var(--popover-foreground))'
+          DEFAULT: '#1a1a1a', // dark-grey
+          foreground: '#FFFFFF' // PURE_WHITE
         },
         card: {
-          DEFAULT: 'hsl(var(--card))',
-          foreground: 'hsl(var(--card-foreground))'
+          DEFAULT: '#1a1a1a', // dark-grey
+          foreground: '#FFFFFF' // PURE_WHITE
         },
         crypto: {
-          quai: '#6366f1',  // Indigo for QUAI
-          qi: '#8b5cf6',    // Violet for QI
-          graph: '#c084fc', // Purple for graph lines
+          quai: '#E22901',    // QUAI_RED
+          qi: '#1a1a1a',      // dark-grey
+          graph: '#404040',   // light-grey
         }
       },
       borderRadius: {
@@ -66,20 +75,12 @@ export default {
       },
       keyframes: {
         'accordion-down': {
-          from: {
-            height: '0'
-          },
-          to: {
-            height: 'var(--radix-accordion-content-height)'
-          }
+          from: { height: '0' },
+          to: { height: 'var(--radix-accordion-content-height)' }
         },
         'accordion-up': {
-          from: {
-            height: 'var(--radix-accordion-content-height)'
-          },
-          to: {
-            height: '0'
-          }
+          from: { height: 'var(--radix-accordion-content-height)' },
+          to: { height: '0' }
         },
         'pulse-gentle': {
           '0%, 100%': { opacity: '1' },

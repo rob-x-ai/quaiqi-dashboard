@@ -1,13 +1,8 @@
-
 import { useEffect, useState } from "react";
 import { Header } from "@/components/Header";
-import { Footer } from "@/components/Footer";
 import { PriceCard } from "@/components/PriceCard";
 import { CurrencyConverter } from "@/components/CurrencyConverter";
 import { PriceChart } from "@/components/PriceChart";
-import { Button } from "@/components/ui/button";
-import { Clipboard, ArrowRight, Check, ExternalLink } from "lucide-react";
-import { toast } from "sonner";
 import {
   fetchQiToQuai,
   fetchQuaiToQi,
@@ -21,12 +16,9 @@ const Index = () => {
   const [quaiUsdPrice, setQuaiUsdPrice] = useState<number>(0);
   const [qiUsdPrice, setQiUsdPrice] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [copied, setCopied] = useState<boolean>(false);
   
   const [lastValidQuaiUsd, setLastValidQuaiUsd] = useState<string>("");
   const [lastValidQiUsd, setLastValidQiUsd] = useState<string>("");
-  
-  const tipAddress = "0x00700BD124Ffab1f7062D177aF1BB323Efee2665";
 
   const formatRate = (rate: string, inverse = false): string => {
     try {
@@ -75,14 +67,6 @@ const Index = () => {
       setIsLoading(false);
     }
   };
-  
-  const handleCopyAddress = () => {
-    navigator.clipboard.writeText(tipAddress);
-    setCopied(true);
-    toast.success("Address copied to clipboard!");
-    
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   useEffect(() => {
     calculateRates();
@@ -110,21 +94,23 @@ const Index = () => {
                 value={formatRate(qiToQuaiRate, true)}
                 subValue="Live conversion rate"
                 isLoading={isLoading}
-                className="bg-gradient-to-br from-background to-background/90 border-crypto-quai/20"
+                className="bg-gradient-to-br from-background to-background/90"
+                tooltip="This is the absolute conversion rate without considering slippage. Actual rate may be lower due to slippage and fees."
               />
               <PriceCard
                 title="1 QI = QUAI"
                 value={formatRate(qiToQuaiRate)}
                 subValue="Live conversion rate"
                 isLoading={isLoading}
-                className="bg-gradient-to-br from-background to-background/90 border-crypto-qi/20"
+                className="bg-gradient-to-br from-background to-background/90"
+                tooltip="This is the absolute conversion rate without considering slippage. Actual rate may be lower due to slippage and fees."
               />
               <PriceCard
                 title="QUAI Price"
                 value={`$${quaiUsdPrice.toFixed(6)} USD`}
                 subValue="CoinGecko data"
                 isLoading={isLoading}
-                className="bg-gradient-to-br from-background to-background/90 border-crypto-quai/20"
+                className="bg-gradient-to-br from-background to-background/90"
                 fallbackValue={lastValidQuaiUsd}
               />
               <PriceCard
@@ -132,7 +118,7 @@ const Index = () => {
                 value={`$${qiUsdPrice.toFixed(6)} USD`}
                 subValue="Calculated from QUAI price"
                 isLoading={isLoading}
-                className="bg-gradient-to-br from-background to-background/90 border-crypto-qi/20"
+                className="bg-gradient-to-br from-background to-background/90"
                 fallbackValue={lastValidQiUsd}
               />
             </div>
@@ -159,35 +145,8 @@ const Index = () => {
               <PriceChart />
             </div>
           </section>
-          
-          <section className="pt-4 border-t border-border">
-            <div className="flex flex-col items-center justify-center p-4 space-y-3">
-              <p className="text-muted-foreground text-sm">Tip me:</p>
-              <div className="flex items-center space-x-2">
-                <a
-                  href="https://quaiscan.io/address/0x00700BD124Ffab1f7062D177aF1BB323Efee2665"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-mono bg-muted p-2 rounded-md hover:text-primary transition-colors flex items-center gap-1"
-                >
-                  {tipAddress}
-                  <ExternalLink className="h-4 w-4" />
-                </a>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleCopyAddress}
-                  className="rounded-full"
-                >
-                  {copied ? <Check className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-          </section>
         </div>
       </main>
-      
-      <Footer />
     </div>
   );
 };

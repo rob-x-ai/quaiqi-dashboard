@@ -1,69 +1,68 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 0 0% 0%; /* PURE_BLACK */
+    --foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card: 0 0% 31%; /* DARK_GREY */
+    --card-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 31%; /* DARK_GREY */
+    --popover-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --primary: 252 87% 53%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 8 99% 44%; /* QUAI_RED */
+    --primary-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --secondary: 222 47% 80%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 0 0% 39%; /* MID_GREY */
+    --secondary-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 0 0% 39%; /* MID_GREY */
+    --muted-foreground: 0 0% 89%; /* OFF_WHITE */
 
-    --accent: 243 75% 59%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 0 0% 63%; /* LIGHT_GREY */
+    --accent-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 8 99% 44%; /* QUAI_RED */
+    --destructive-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 0 0% 31%; /* DARK_GREY */
+    --input: 0 0% 31%; /* DARK_GREY */
+    --ring: 8 99% 44%; /* QUAI_RED */
 
     --radius: 0.75rem;
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
+    --background: 0 0% 0%; /* PURE_BLACK */
+    --foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
+    --card: 0 0% 31%; /* DARK_GREY */
+    --card-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 0 0% 31%; /* DARK_GREY */
+    --popover-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --primary: 252 87% 73%;
-    --primary-foreground: 240 5.9% 10%;
+    --primary: 8 99% 44%; /* QUAI_RED */
+    --primary-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 0 0% 39%; /* MID_GREY */
+    --secondary-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 0 0% 39%; /* MID_GREY */
+    --muted-foreground: 0 0% 89%; /* OFF_WHITE */
 
-    --accent: 243 75% 69%;
-    --accent-foreground: 0 0% 98%;
+    --accent: 0 0% 63%; /* LIGHT_GREY */
+    --accent-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 8 99% 44%; /* QUAI_RED */
+    --destructive-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --border: 0 0% 39%; /* MID_GREY */
+    --input: 0 0% 39%; /* MID_GREY */
+    --ring: 8 99% 44%; /* QUAI_RED */
   }
 }
 
@@ -90,9 +89,9 @@
   border-radius: inherit;
   background: linear-gradient(
     135deg,
-    rgba(99, 102, 241, 0.5),
-    rgba(139, 92, 246, 0.5),
-    rgba(192, 132, 252, 0.5)
+    rgba(226, 41, 1, 0.5), /* QUAI_RED */
+    rgba(79, 79, 79, 0.5), /* DARK_GREY */
+    rgba(161, 161, 161, 0.5) /* LIGHT_GREY */
   );
   opacity: 0;
   transition: opacity 0.3s ease;
