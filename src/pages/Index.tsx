@@ -83,7 +83,7 @@ const Index = () => {
       <main className="flex-1 container pt-24 pb-16">
         <div className="space-y-10">
           <section>
-            <h1 className="text-3xl font-bold mb-2">QUAI/QI Converter</h1>
+            <h1 className="text-3xl font-bold mb-2">QUAI/QI Conversion Dashboard</h1>
             <p className="text-muted-foreground mb-8">
               Real-time conversion rates and USD prices for QUAI and QI
             </p>

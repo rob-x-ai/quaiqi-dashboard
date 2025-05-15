@@ -111,7 +111,7 @@ export async function fetchConversionAmountAfterSlip(amount: string, direction: 
   }
 }
 
-export async function fetchQiToQuai(amount = "0x3e8"): Promise<string> {
+export async function fetchQiToQuai(amount = "0x3E8"): Promise<string> {
   try {
     const response = await fetch("https://rpc.quai.network/cyprus1", {
       method: "POST",
@@ -140,7 +140,7 @@ export async function fetchQiToQuai(amount = "0x3e8"): Promise<string> {
   }
 }
 
-export async function fetchQuaiToQi(amount = "0x3e8"): Promise<string> {
+export async function fetchQuaiToQi(amount = "0xDE0B6B3A7640000"): Promise<string> {
   try {
     const response = await fetch("https://rpc.quai.network/cyprus1", {
       method: "POST",
