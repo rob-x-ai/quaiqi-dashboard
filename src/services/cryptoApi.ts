@@ -41,6 +41,10 @@ let lastUpdatedTimestamp: number = Date.now();
 let qiPriceHistory: Array<{ timestamp: number; price: number }> = [];
 let quaiPriceHistory: Array<{ timestamp: number; price: number }> = [];
 
+// Maintain a small buffer of raw QI/USD samples to smooth spikes
+let qiRawBuffer: number[] = [];
+const MAX_RAW_BUFFER = 5;
+
 // --- Persistence helpers (localStorage) ---
 const isBrowser = typeof window !== 'undefined' && !!window.localStorage;
 const STORAGE_KEYS = {
@@ -303,23 +307,64 @@ export async function calculateQiUsdPrice(
   quaiUsdPrice: number
 ): Promise<number> {
   try {
-    const qiToQuaiDecimal = parseInt(qiToQuaiRate, 16) / 10 ** 18;
+    const rateHex = (qiToQuaiRate || '').toString();
+    const rateNum = Number.parseInt(rateHex, 16);
+    const qiToQuaiDecimal = Number.isFinite(rateNum) ? rateNum / 1e18 : NaN;
 
-    if (qiToQuaiDecimal && qiToQuaiDecimal > 0) {
-      const qiUsdPrice = quaiUsdPrice * qiToQuaiDecimal;
-      lastQiUsdPrice = qiUsdPrice;
+    // Basic sanity on inputs
+    const quaiOk = Number.isFinite(quaiUsdPrice) && quaiUsdPrice > 0;
+    const rateOk = Number.isFinite(qiToQuaiDecimal) && qiToQuaiDecimal > 0 && qiToQuaiDecimal < 1e6;
+
+    if (quaiOk && rateOk) {
+      const raw = quaiUsdPrice * qiToQuaiDecimal; // computed QI/USD
+
+      // Push to raw buffer
+      qiRawBuffer.push(raw);
+      if (qiRawBuffer.length > MAX_RAW_BUFFER) qiRawBuffer = qiRawBuffer.slice(-MAX_RAW_BUFFER);
+
+      // Robust estimator: median of buffer
+      const median = (vals: number[]) => {
+        const a = [...vals].sort((a, b) => a - b);
+        const mid = Math.floor(a.length / 2);
+        return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
+      };
+      let candidate = median(qiRawBuffer);
+
+      // Clamp sudden jumps to reduce single-sample spikes (±20%)
+      const clampPct = 0.2;
+      if (lastQiUsdPrice && lastQiUsdPrice > 0) {
+        const upper = lastQiUsdPrice * (1 + clampPct);
+        const lower = lastQiUsdPrice * (1 - clampPct);
+        if (candidate > upper) candidate = upper;
+        if (candidate < lower) candidate = lower;
+      }
+
+      lastQiUsdPrice = candidate;
 
       // Add to QI history and persist
-      addHistoryPoint('qi', { timestamp: Date.now(), price: qiUsdPrice });
+      addHistoryPoint('qi', { timestamp: Date.now(), price: candidate });
       maybePersistLastValues();
 
-      return qiUsdPrice;
+      return candidate;
     }
 
-    return lastQiUsdPrice || (quaiUsdPrice * 16);
+    // Fallbacks: prefer last good price; otherwise try reconstructing from last known pieces
+    if (typeof lastQiUsdPrice === 'number' && lastQiUsdPrice > 0) {
+      return lastQiUsdPrice;
+    }
+    if (lastQuaiUsdPrice && lastQiToQuaiRate) {
+      const lr = Number.parseInt(lastQiToQuaiRate, 16);
+      if (Number.isFinite(lr) && lr > 0) {
+        return lastQuaiUsdPrice * (lr / 1e18);
+      }
+    }
+    // Final hard fallback: return QUAI price (rough lower bound) to avoid spikes
+    return quaiUsdPrice || 0;
   } catch (error) {
     console.error("Error calculating QI USD price:", error);
-    return lastQiUsdPrice || (quaiUsdPrice * 16);
+    return lastQiUsdPrice || (lastQuaiUsdPrice && lastQiToQuaiRate
+      ? lastQuaiUsdPrice * (Number.parseInt(lastQiToQuaiRate, 16) / 1e18)
+      : (quaiUsdPrice || 0));
   }
 }
 
