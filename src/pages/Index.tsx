@@ -16,6 +16,7 @@ const Index = () => {
   const [quaiUsdPrice, setQuaiUsdPrice] = useState<number>(0);
   const [qiUsdPrice, setQiUsdPrice] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [qiLoading, setQiLoading] = useState<boolean>(true);
   
   const [lastValidQuaiUsd, setLastValidQuaiUsd] = useState<string>("");
   const [lastValidQiUsd, setLastValidQiUsd] = useState<string>("");
@@ -55,15 +56,22 @@ const Index = () => {
 
       // Calculate QI price based on the QI to QUAI rate and QUAI price
       const qiUsd = await calculateQiUsdPrice(qiToQuaiResult, quaiUsd);
-      setQiUsdPrice(qiUsd);
-      
-      if (qiUsd > 0) {
-        const formatted = `$${qiUsd.toFixed(6)} USD`;
-        setLastValidQiUsd(formatted);
+      // Only expose QI price to UI once stable to prevent first-sample spikes
+      const { isQiPriceStable } = await import("@/services/cryptoApi");
+      if (isQiPriceStable()) {
+        setQiUsdPrice(qiUsd);
+        setQiLoading(false);
+        if (qiUsd > 0) {
+          const formatted = `$${qiUsd.toFixed(6)} USD`;
+          setLastValidQiUsd(formatted);
+        }
+      } else {
+        setQiLoading(true);
       }
     } catch (error) {
       console.error("Error calculating rates:", error);
     } finally {
+      // General loading ends after first fetch completes
       setIsLoading(false);
     }
   };
@@ -117,7 +125,7 @@ const Index = () => {
                 title="QI Price"
                 value={`$${qiUsdPrice.toFixed(6)} USD`}
                 subValue="Calculated from QUAI price"
-                isLoading={isLoading}
+                isLoading={qiLoading}
                 className="bg-gradient-to-br from-background to-background/90"
                 fallbackValue={lastValidQiUsd}
               />

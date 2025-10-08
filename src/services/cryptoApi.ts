@@ -479,3 +479,8 @@ export function getQuaiPriceHistory() {
 export function getLastUpdatedTime(): number {
   return lastUpdatedTimestamp;
 }
+
+// Expose whether QI price has at least two raw samples (for UI gating)
+export function isQiPriceStable(): boolean {
+  return qiRawBuffer.length >= 2 && typeof lastQiUsdPrice === 'number' && lastQiUsdPrice > 0;
+}
