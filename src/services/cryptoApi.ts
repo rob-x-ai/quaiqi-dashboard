@@ -307,16 +307,49 @@ export async function calculateQiUsdPrice(
   quaiUsdPrice: number
 ): Promise<number> {
   try {
+    const hadLastBefore = typeof lastQiUsdPrice === 'number' && lastQiUsdPrice > 0;
+
+    // Parse QI->QUAI rate
     const rateHex = (qiToQuaiRate || '').toString();
     const rateNum = Number.parseInt(rateHex, 16);
     const qiToQuaiDecimal = Number.isFinite(rateNum) ? rateNum / 1e18 : NaN;
 
+    // Parse QUAI->QI rate (from last known state)
+    const q2qHex = (lastQuaiToQiRate || '').toString();
+    const q2qNum = Number.parseInt(q2qHex, 16);
+    const quaiToQiDecimal = Number.isFinite(q2qNum) ? q2qNum / 1e18 : NaN;
+
     // Basic sanity on inputs
     const quaiOk = Number.isFinite(quaiUsdPrice) && quaiUsdPrice > 0;
-    const rateOk = Number.isFinite(qiToQuaiDecimal) && qiToQuaiDecimal > 0 && qiToQuaiDecimal < 1e6;
+    const rateOkA = Number.isFinite(qiToQuaiDecimal) && qiToQuaiDecimal > 0 && qiToQuaiDecimal < 1e12;
+    const rateOkB = Number.isFinite(quaiToQiDecimal) && quaiToQiDecimal > 0 && quaiToQiDecimal < 1e12;
 
-    if (quaiOk && rateOk) {
-      const raw = quaiUsdPrice * qiToQuaiDecimal; // computed QI/USD
+    if (quaiOk && (rateOkA || rateOkB)) {
+      // Compute candidates from both directions when available
+      const candFromA = rateOkA ? quaiUsdPrice * qiToQuaiDecimal : NaN;
+      const candFromB = rateOkB ? (quaiUsdPrice / quaiToQiDecimal) : NaN;
+
+      let raw: number | null = null;
+      if (Number.isFinite(candFromA) && Number.isFinite(candFromB)) {
+        const minv = Math.min(candFromA as number, candFromB as number);
+        const maxv = Math.max(candFromA as number, candFromB as number);
+        // If disagreement > 50%, pick conservative (lower) to avoid overshoot
+        if (maxv / minv > 1.5) {
+          raw = minv;
+        } else {
+          raw = (candFromA as number + candFromB as number) / 2;
+        }
+      } else if (Number.isFinite(candFromA)) {
+        raw = candFromA as number;
+      } else if (Number.isFinite(candFromB)) {
+        raw = candFromB as number;
+      }
+
+      if (!raw || !(raw > 0)) {
+        // fall back to last good if raw is unusable
+        if (hadLastBefore) return lastQiUsdPrice as number;
+        return quaiUsdPrice || 0;
+      }
 
       // Push to raw buffer
       qiRawBuffer.push(raw);
@@ -341,8 +374,11 @@ export async function calculateQiUsdPrice(
 
       lastQiUsdPrice = candidate;
 
-      // Add to QI history and persist
-      addHistoryPoint('qi', { timestamp: Date.now(), price: candidate });
+      // Add to QI history and persist.
+      // Avoid adding the very first unstable point to history to prevent initial overshoot dot.
+      if (hadLastBefore || qiRawBuffer.length >= 2) {
+        addHistoryPoint('qi', { timestamp: Date.now(), price: candidate });
+      }
       maybePersistLastValues();
 
       return candidate;
