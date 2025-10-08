@@ -355,7 +355,7 @@ export async function calculateQiUsdPrice(
       qiRawBuffer.push(raw);
       if (qiRawBuffer.length > MAX_RAW_BUFFER) qiRawBuffer = qiRawBuffer.slice(-MAX_RAW_BUFFER);
 
-      // Robust estimator: median of buffer
+      // Robust estimator: median of buffer (no hard clamp, to prevent getting stuck)
       const median = (vals: number[]) => {
         const a = [...vals].sort((a, b) => a - b);
         const mid = Math.floor(a.length / 2);
@@ -363,20 +363,11 @@ export async function calculateQiUsdPrice(
       };
       let candidate = median(qiRawBuffer);
 
-      // Clamp sudden jumps to reduce single-sample spikes (±20%)
-      const clampPct = 0.2;
-      if (lastQiUsdPrice && lastQiUsdPrice > 0) {
-        const upper = lastQiUsdPrice * (1 + clampPct);
-        const lower = lastQiUsdPrice * (1 - clampPct);
-        if (candidate > upper) candidate = upper;
-        if (candidate < lower) candidate = lower;
-      }
-
       lastQiUsdPrice = candidate;
 
       // Add to QI history and persist.
-      // Avoid adding unstable initial samples; wait for at least 3 raw points.
-      if (hadLastBefore || qiRawBuffer.length >= 3) {
+      // Avoid adding unstable initial samples; wait for at least 2 raw points.
+      if (hadLastBefore || qiRawBuffer.length >= 2) {
         addHistoryPoint('qi', { timestamp: Date.now(), price: candidate });
       }
       maybePersistLastValues();
