@@ -41,6 +41,110 @@ let lastUpdatedTimestamp: number = Date.now();
 let qiPriceHistory: Array<{ timestamp: number; price: number }> = [];
 let quaiPriceHistory: Array<{ timestamp: number; price: number }> = [];
 
+// --- Persistence helpers (localStorage) ---
+const isBrowser = typeof window !== 'undefined' && !!window.localStorage;
+const STORAGE_KEYS = {
+  qi: 'quaiqi:qiPriceHistory',
+  quai: 'quaiqi:quaiPriceHistory',
+  lastQiUsd: 'quaiqi:lastQiUsdPrice',
+  lastQuaiUsd: 'quaiqi:lastQuaiUsdPrice',
+  lastUpdated: 'quaiqi:lastUpdatedTs',
+} as const;
+
+// Keep at most this much history by timestamp (30 days)
+const MAX_HISTORY_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+// Only persist a new point if at least this much time passed since last saved (1 minute)
+const MIN_SAMPLE_INTERVAL_MS = 60 * 1000;
+
+function loadArrayFromStorage(key: string): Array<{ timestamp: number; price: number }> {
+  if (!isBrowser) return [];
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as Array<{ timestamp: number; price: number }>;
+    const now = Date.now();
+    // Filter out anything older than MAX_HISTORY_AGE_MS or malformed
+    const filtered = (Array.isArray(parsed) ? parsed : []).filter(p => {
+      return (
+        p && typeof p.timestamp === 'number' && typeof p.price === 'number' &&
+        now - p.timestamp <= MAX_HISTORY_AGE_MS && p.timestamp <= now
+      );
+    });
+    return filtered;
+  } catch {
+    return [];
+  }
+}
+
+function saveArrayToStorage(key: string, arr: Array<{ timestamp: number; price: number }>) {
+  if (!isBrowser) return;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(arr));
+  } catch {
+    // Ignore storage errors (quota, etc.)
+  }
+}
+
+function maybePersistLastValues() {
+  if (!isBrowser) return;
+  try {
+    if (typeof lastQiUsdPrice === 'number') {
+      window.localStorage.setItem(STORAGE_KEYS.lastQiUsd, String(lastQiUsdPrice));
+    }
+    if (typeof lastQuaiUsdPrice === 'number') {
+      window.localStorage.setItem(STORAGE_KEYS.lastQuaiUsd, String(lastQuaiUsdPrice));
+    }
+    window.localStorage.setItem(STORAGE_KEYS.lastUpdated, String(lastUpdatedTimestamp));
+  } catch {
+    // ignore
+  }
+}
+
+function addHistoryPoint(
+  kind: 'qi' | 'quai',
+  point: { timestamp: number; price: number }
+) {
+  const now = Date.now();
+  const arr = kind === 'qi' ? qiPriceHistory : quaiPriceHistory;
+
+  // Keep only last MAX_HISTORY_AGE_MS window
+  const minTs = now - MAX_HISTORY_AGE_MS;
+  const trimmed = arr.filter(p => p.timestamp >= minTs);
+
+  // Only sample if last point was older than MIN_SAMPLE_INTERVAL_MS or price changed significantly
+  const last = trimmed[trimmed.length - 1];
+  const shouldAppend = !last || (
+    (point.timestamp - last.timestamp) >= MIN_SAMPLE_INTERVAL_MS ||
+    Math.abs(point.price - last.price) / (last.price || 1) >= 0.01 // 1% change forces a sample
+  );
+
+  const updated = shouldAppend ? [...trimmed, point] : trimmed;
+
+  if (kind === 'qi') {
+    qiPriceHistory = updated;
+    saveArrayToStorage(STORAGE_KEYS.qi, qiPriceHistory);
+  } else {
+    quaiPriceHistory = updated;
+    saveArrayToStorage(STORAGE_KEYS.quai, quaiPriceHistory);
+  }
+}
+
+// Initialize from localStorage on module load (browser only)
+if (isBrowser) {
+  qiPriceHistory = loadArrayFromStorage(STORAGE_KEYS.qi);
+  quaiPriceHistory = loadArrayFromStorage(STORAGE_KEYS.quai);
+  try {
+    const lastQi = window.localStorage.getItem(STORAGE_KEYS.lastQiUsd);
+    const lastQuai = window.localStorage.getItem(STORAGE_KEYS.lastQuaiUsd);
+    const lastTs = window.localStorage.getItem(STORAGE_KEYS.lastUpdated);
+    lastQiUsdPrice = lastQi !== null ? Number(lastQi) : lastQiUsdPrice;
+    lastQuaiUsdPrice = lastQuai !== null ? Number(lastQuai) : lastQuaiUsdPrice;
+    lastUpdatedTimestamp = lastTs !== null ? Number(lastTs) : lastUpdatedTimestamp;
+  } catch {
+    // ignore
+  }
+}
+
 // Conversion flow tracking
 let flowHistory: FlowData[] = [];
 
@@ -183,14 +287,9 @@ export async function fetchQuaiUsdPrice(): Promise<number> {
     lastQuaiUsdPrice = data["quai-network"].usd;
     lastUpdatedTimestamp = Date.now();
 
-    quaiPriceHistory.push({
-      timestamp: Date.now(),
-      price: lastQuaiUsdPrice
-    });
-
-    if (quaiPriceHistory.length > 100) {
-      quaiPriceHistory = quaiPriceHistory.slice(-100);
-    }
+    // Add to QUAI history and persist
+    addHistoryPoint('quai', { timestamp: lastUpdatedTimestamp, price: lastQuaiUsdPrice });
+    maybePersistLastValues();
 
     return lastQuaiUsdPrice;
   } catch (error) {
@@ -210,14 +309,9 @@ export async function calculateQiUsdPrice(
       const qiUsdPrice = quaiUsdPrice * qiToQuaiDecimal;
       lastQiUsdPrice = qiUsdPrice;
 
-      qiPriceHistory.push({
-        timestamp: Date.now(),
-        price: qiUsdPrice
-      });
-
-      if (qiPriceHistory.length > 100) {
-        qiPriceHistory = qiPriceHistory.slice(-100);
-      }
+      // Add to QI history and persist
+      addHistoryPoint('qi', { timestamp: Date.now(), price: qiUsdPrice });
+      maybePersistLastValues();
 
       return qiUsdPrice;
     }
@@ -311,6 +405,8 @@ export function getPriceHistory() {
       timestamp: now,
       price: lastQiUsdPrice
     });
+    // Persist synthetic bootstrap if we had no history
+    saveArrayToStorage(STORAGE_KEYS.qi, qiPriceHistory);
   }
   return qiPriceHistory;
 }
