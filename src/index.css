@@ -3,66 +3,68 @@
 @tailwind utilities;
 
 @layer base {
+  /* Light theme (default) */
   :root {
-    --background: 0 0% 0%; /* PURE_BLACK */
-    --foreground: 0 0% 100%; /* PURE_WHITE */
+    --background: 0 0% 100%; /* PURE_WHITE */
+    --foreground: 0 0% 0%;   /* PURE_BLACK */
 
-    --card: 0 0% 31%; /* DARK_GREY */
-    --card-foreground: 0 0% 100%; /* PURE_WHITE */
+    --card: 0 0% 100%;             /* PURE_WHITE */
+    --card-foreground: 0 0% 12%;   /* NEAR_BLACK */
 
-    --popover: 0 0% 31%; /* DARK_GREY */
-    --popover-foreground: 0 0% 100%; /* PURE_WHITE */
+    --popover: 0 0% 100%;          /* PURE_WHITE */
+    --popover-foreground: 0 0% 12%;/* NEAR_BLACK */
 
-    --primary: 8 99% 44%; /* QUAI_RED */
+    --primary: 8 99% 44%;          /* QUAI_RED */
     --primary-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --secondary: 0 0% 39%; /* MID_GREY */
-    --secondary-foreground: 0 0% 100%; /* PURE_WHITE */
+    --secondary: 0 0% 96%;         /* VERY_LIGHT_GREY */
+    --secondary-foreground: 0 0% 20%; /* DARK_TEXT */
 
-    --muted: 0 0% 39%; /* MID_GREY */
-    --muted-foreground: 0 0% 89%; /* OFF_WHITE */
+    --muted: 0 0% 96%;             /* VERY_LIGHT_GREY */
+    --muted-foreground: 0 0% 40%;   /* MEDIUM_GREY */
 
-    --accent: 0 0% 63%; /* LIGHT_GREY */
-    --accent-foreground: 0 0% 100%; /* PURE_WHITE */
+    --accent: 0 0% 92%;            /* LIGHT_GREY */
+    --accent-foreground: 0 0% 20%;  /* DARK_TEXT */
 
-    --destructive: 8 99% 44%; /* QUAI_RED */
+    --destructive: 8 99% 44%;      /* QUAI_RED */
     --destructive-foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --border: 0 0% 31%; /* DARK_GREY */
-    --input: 0 0% 31%; /* DARK_GREY */
-    --ring: 8 99% 44%; /* QUAI_RED */
+    --border: 0 0% 90%;            /* LIGHT_BORDER */
+    --input: 0 0% 90%;             /* LIGHT_BORDER */
+    --ring: 8 99% 44%;             /* QUAI_RED */
 
     --radius: 0.75rem;
   }
 
+  /* Dark theme */
   .dark {
-    --background: 0 0% 0%; /* PURE_BLACK */
+    --background: 0 0% 0%;   /* PURE_BLACK */
     --foreground: 0 0% 100%; /* PURE_WHITE */
 
-    --card: 0 0% 31%; /* DARK_GREY */
-    --card-foreground: 0 0% 100%; /* PURE_WHITE */
+    --card: 0 0% 12%;        /* VERY_DARK_GREY */
+    --card-foreground: 0 0% 100%;
 
-    --popover: 0 0% 31%; /* DARK_GREY */
-    --popover-foreground: 0 0% 100%; /* PURE_WHITE */
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 8 99% 44%; /* QUAI_RED */
-    --primary-foreground: 0 0% 100%; /* PURE_WHITE */
+    --primary: 8 99% 44%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 0 0% 39%; /* MID_GREY */
-    --secondary-foreground: 0 0% 100%; /* PURE_WHITE */
+    --secondary: 0 0% 20%;   /* DARK_GREY */
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 0 0% 39%; /* MID_GREY */
+    --muted: 0 0% 24%;       /* DARKER_GREY */
     --muted-foreground: 0 0% 89%; /* OFF_WHITE */
 
-    --accent: 0 0% 63%; /* LIGHT_GREY */
-    --accent-foreground: 0 0% 100%; /* PURE_WHITE */
+    --accent: 0 0% 40%;      /* LIGHT_GREY */
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 8 99% 44%; /* QUAI_RED */
-    --destructive-foreground: 0 0% 100%; /* PURE_WHITE */
+    --destructive: 8 99% 44%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 39%; /* MID_GREY */
-    --input: 0 0% 39%; /* MID_GREY */
-    --ring: 8 99% 44%; /* QUAI_RED */
+    --border: 0 0% 20%;      /* DARK_GREY */
+    --input: 0 0% 20%;
+    --ring: 8 99% 44%;
   }
 }
 
