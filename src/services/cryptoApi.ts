@@ -502,3 +502,8 @@ export function getLastUpdatedTime(): number {
 export function isQiPriceStable(): boolean {
   return qiRawBuffer.length >= 2 && typeof lastQiUsdPrice === 'number' && lastQiUsdPrice > 0;
 }
+
+// Expose last persisted QI price (may come from localStorage on load)
+export function getLastQiUsdPrice(): number | null {
+  return typeof lastQiUsdPrice === 'number' && lastQiUsdPrice > 0 ? lastQiUsdPrice : null;
+}

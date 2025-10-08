@@ -77,6 +77,17 @@ const Index = () => {
   };
 
   useEffect(() => {
+    // Seed UI from persisted last QI price if available to avoid showing 0
+    (async () => {
+      const { getLastQiUsdPrice } = await import("@/services/cryptoApi");
+      const last = getLastQiUsdPrice();
+      if (last && last > 0) {
+        setQiUsdPrice(last);
+        setLastValidQiUsd(`$${last.toFixed(6)} USD`);
+        setQiLoading(true); // still waiting for fresh stable samples
+      }
+    })();
+
     calculateRates();
     
     const intervalId = setInterval(calculateRates, 30000);
