@@ -61,13 +61,18 @@ export function PriceChart() {
     return priceData.filter(data => data.timestamp >= cutoffTime);
   };
   
+  // Colors derived from CSS variables so they adapt to theme
+  const lineColor = "hsl(var(--primary))";
+  const gridColor = "hsl(var(--border))";
+  const axisColor = "hsl(var(--muted-foreground))";
+
   // Custom tooltip content
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-popover border border-border p-2 rounded-md shadow-md text-sm">
           <p className="font-medium">{format(new Date(label), "MMM dd, HH:mm")}</p>
-          <p className="text-accent">QI Price: ${payload[0].value.toFixed(6)}</p>
+          <p className="text-primary">QI Price: ${payload[0].value.toFixed(6)}</p>
         </div>
       );
     }
@@ -92,30 +97,32 @@ export function PriceChart() {
       <CardContent className="pt-4 h-[340px]">
         {filteredData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={filteredData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+            <LineChart data={filteredData} margin={{ top: 12, right: 16, left: 8, bottom: 8 }}>
+              <CartesianGrid stroke={gridColor} strokeOpacity={0.3} />
               <XAxis 
                 dataKey="timestamp" 
                 tickFormatter={formatXAxis}
-                stroke="currentColor" 
-                opacity={0.5}
-                tick={{ fontSize: 12 }}
+                stroke={gridColor}
+                tick={{ fontSize: 12, fill: axisColor }}
+                tickLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
+                axisLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
               />
               <YAxis 
-                domain={['auto', 'auto']} 
-                stroke="currentColor"
-                opacity={0.5}
-                tick={{ fontSize: 12 }}
+                domain={["auto", "auto"]}
+                stroke={gridColor}
+                tick={{ fontSize: 12, fill: axisColor }}
+                tickLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
+                axisLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
                 tickFormatter={(value) => `$${value.toFixed(2)}`}
               />
               <Tooltip content={<CustomTooltip />} />
               <Line 
                 type="monotone" 
                 dataKey="price" 
-                strokeWidth={2}
-                stroke="hsl(var(--accent))" 
+                strokeWidth={2.5}
+                stroke={lineColor}
                 dot={false}
-                activeDot={{ r: 6, stroke: "hsl(var(--accent))", strokeWidth: 2, fill: "hsl(var(--background))" }}
+                activeDot={{ r: 6, stroke: lineColor, strokeWidth: 2, fill: "hsl(var(--background))" }}
               />
             </LineChart>
           </ResponsiveContainer>
