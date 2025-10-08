@@ -53,7 +53,10 @@ const STORAGE_KEYS = {
   lastQiUsd: 'quaiqi:lastQiUsdPrice',
   lastQuaiUsd: 'quaiqi:lastQuaiUsdPrice',
   lastUpdated: 'quaiqi:lastUpdatedTs',
+  version: 'quaiqi:storageVersion',
 } as const;
+
+const STORAGE_VERSION = '2';
 
 // Keep at most this much history by timestamp (30 days)
 const MAX_HISTORY_AGE_MS = 30 * 24 * 60 * 60 * 1000;
@@ -92,13 +95,15 @@ function saveArrayToStorage(key: string, arr: Array<{ timestamp: number; price: 
 function maybePersistLastValues() {
   if (!isBrowser) return;
   try {
-    if (typeof lastQiUsdPrice === 'number') {
+    // Only persist QI after we have at least 2 raw samples to avoid storing a bad first tick
+    if (typeof lastQiUsdPrice === 'number' && qiRawBuffer.length >= 2) {
       window.localStorage.setItem(STORAGE_KEYS.lastQiUsd, String(lastQiUsdPrice));
     }
     if (typeof lastQuaiUsdPrice === 'number') {
       window.localStorage.setItem(STORAGE_KEYS.lastQuaiUsd, String(lastQuaiUsdPrice));
     }
     window.localStorage.setItem(STORAGE_KEYS.lastUpdated, String(lastUpdatedTimestamp));
+    window.localStorage.setItem(STORAGE_KEYS.version, STORAGE_VERSION);
   } catch {
     // ignore
   }
@@ -135,6 +140,19 @@ function addHistoryPoint(
 
 // Initialize from localStorage on module load (browser only)
 if (isBrowser) {
+  // Simple versioned init: if structure changes, clear stale keys once
+  try {
+    const ver = window.localStorage.getItem(STORAGE_KEYS.version);
+    if (ver !== STORAGE_VERSION) {
+      window.localStorage.removeItem(STORAGE_KEYS.qi);
+      window.localStorage.removeItem(STORAGE_KEYS.quai);
+      window.localStorage.removeItem(STORAGE_KEYS.lastQiUsd);
+      window.localStorage.removeItem(STORAGE_KEYS.lastQuaiUsd);
+      window.localStorage.removeItem(STORAGE_KEYS.lastUpdated);
+      window.localStorage.setItem(STORAGE_KEYS.version, STORAGE_VERSION);
+    }
+  } catch {}
+
   qiPriceHistory = loadArrayFromStorage(STORAGE_KEYS.qi);
   quaiPriceHistory = loadArrayFromStorage(STORAGE_KEYS.quai);
   try {
