@@ -375,8 +375,8 @@ export async function calculateQiUsdPrice(
       lastQiUsdPrice = candidate;
 
       // Add to QI history and persist.
-      // Avoid adding the very first unstable point to history to prevent initial overshoot dot.
-      if (hadLastBefore || qiRawBuffer.length >= 2) {
+      // Avoid adding unstable initial samples; wait for at least 3 raw points.
+      if (hadLastBefore || qiRawBuffer.length >= 3) {
         addHistoryPoint('qi', { timestamp: Date.now(), price: candidate });
       }
       maybePersistLastValues();
@@ -476,19 +476,8 @@ export async function calculateConversionAmount(
 }
 
 export function getPriceHistory() {
-  if (qiPriceHistory.length === 0 && lastQiUsdPrice) {
-    const now = Date.now();
-    qiPriceHistory.push({
-      timestamp: now - 3600000,
-      price: lastQiUsdPrice
-    });
-    qiPriceHistory.push({
-      timestamp: now,
-      price: lastQiUsdPrice
-    });
-    // Persist synthetic bootstrap if we had no history
-    saveArrayToStorage(STORAGE_KEYS.qi, qiPriceHistory);
-  }
+  // Do not synthesize bootstrap points; require at least 2 real samples
+  if (qiPriceHistory.length < 2) return [];
   return qiPriceHistory;
 }
 
