@@ -19,7 +19,7 @@ export default {
     },
     extend: {
       colors: {
-        // Brand colors
+        // Brand helpers (optional)
         'quai-red': '#E22901',
         'pure-black': '#000000',
         'dark-grey': '#1a1a1a',
@@ -27,46 +27,46 @@ export default {
         'light-grey': '#404040',
         'off-white': '#E2E2E2',
         'pure-white': '#FFFFFF',
-        
-        // System colors mapped to brand colors
-        border: '#1a1a1a', // dark-grey
-        input: '#1a1a1a', // dark-grey
-        ring: '#E22901', // QUAI_RED
-        background: '#000000', // PURE_BLACK
-        foreground: '#FFFFFF', // PURE_WHITE
+
+        // Semantic colors use CSS variables so they react to .dark
+        border: 'hsl(var(--border))',
+        input: 'hsl(var(--input))',
+        ring: 'hsl(var(--ring))',
+        background: 'hsl(var(--background))',
+        foreground: 'hsl(var(--foreground))',
         primary: {
-          DEFAULT: '#E22901', // QUAI_RED
-          foreground: '#FFFFFF' // PURE_WHITE
+          DEFAULT: 'hsl(var(--primary))',
+          foreground: 'hsl(var(--primary-foreground))',
         },
         secondary: {
-          DEFAULT: '#1a1a1a', // dark-grey
-          foreground: '#FFFFFF' // PURE_WHITE
+          DEFAULT: 'hsl(var(--secondary))',
+          foreground: 'hsl(var(--secondary-foreground))',
         },
         destructive: {
-          DEFAULT: '#E22901', // QUAI_RED
-          foreground: '#FFFFFF' // PURE_WHITE
+          DEFAULT: 'hsl(var(--destructive))',
+          foreground: 'hsl(var(--destructive-foreground))',
         },
         muted: {
-          DEFAULT: '#262626', // mid-grey
-          foreground: '#E2E2E2' // OFF_WHITE
+          DEFAULT: 'hsl(var(--muted))',
+          foreground: 'hsl(var(--muted-foreground))',
         },
         accent: {
-          DEFAULT: '#404040', // light-grey
-          foreground: '#FFFFFF' // PURE_WHITE
+          DEFAULT: 'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))',
         },
         popover: {
-          DEFAULT: '#1a1a1a', // dark-grey
-          foreground: '#FFFFFF' // PURE_WHITE
+          DEFAULT: 'hsl(var(--popover))',
+          foreground: 'hsl(var(--popover-foreground))',
         },
         card: {
-          DEFAULT: '#1a1a1a', // dark-grey
-          foreground: '#FFFFFF' // PURE_WHITE
+          DEFAULT: 'hsl(var(--card))',
+          foreground: 'hsl(var(--card-foreground))',
         },
         crypto: {
-          quai: '#E22901',    // QUAI_RED
+          quai: '#E22901',    // QUAI_RED (static brand color)
           qi: '#1a1a1a',      // dark-grey
           graph: '#404040',   // light-grey
-        }
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',
