@@ -1,21 +1,22 @@
 import { useTheme } from "@/components/ThemeProvider"
 import { Toaster as Sonner, toast } from "sonner"
+import type { ComponentProps } from "react"
 
-type ToasterProps = React.ComponentProps<typeof Sonner>
+type ToasterProps = ComponentProps<typeof Sonner>
+
+const getSystemThemePreference = (): Exclude<ToasterProps["theme"], undefined> => {
+  if (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    return "dark"
+  }
+  return "light"
+}
 
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme } = useTheme()
 
   // Map our ThemeProvider's theme to an explicit value for Sonner
-  const effectiveTheme: ToasterProps["theme"] = ((): any => {
-    if (theme === "system") {
-      if (typeof window !== "undefined") {
-        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-      }
-      return "light"
-    }
-    return theme as ToasterProps["theme"]
-  })()
+  const effectiveTheme: ToasterProps["theme"] =
+    theme === "system" ? getSystemThemePreference() : (theme as ToasterProps["theme"])
 
   return (
     <Sonner

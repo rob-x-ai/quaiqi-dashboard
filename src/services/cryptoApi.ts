@@ -1,5 +1,4 @@
 import { toast } from "sonner";
-import { hexlify } from "ethers";
 
 interface QuaiResponse {
   jsonrpc: string;
@@ -7,11 +6,14 @@ interface QuaiResponse {
   result: string;
 }
 
-interface CoinGeckoResponse {
-  'quai-network': {
-    usd: number;
+interface PriceProviderResponse {
+  coins?: Record<string, { price?: number }>;
+  'quai-network'?: {
+    usd?: number;
   };
 }
+
+const LLAMA_PRICE_URL = "https://coins.llama.fi/prices/current/coingecko:quai-network";
 
 interface ConversionResult {
   amountOut: string;
@@ -30,6 +32,282 @@ interface FlowData {
   timestamp: number;
 }
 
+interface QuaiBlockResponse {
+  jsonrpc: string;
+  id: number;
+  result: {
+    woHeader?: {
+      number?: string;
+      timestamp?: string;
+    };
+  } | null;
+}
+
+interface BlockInfo {
+  number: bigint;
+  timestampMs: number;
+}
+
+const QUAI_RPC_URL = "https://rpc.quai.network/cyprus1";
+
+const blockCache = new Map<string, BlockInfo>();
+
+export function normalizeBlockParam(
+  block: bigint | number | string | Array<string | number | bigint | null | undefined> | null | undefined
+): string {
+  if (block === null || block === undefined) {
+    return "latest";
+  }
+  if (Array.isArray(block)) {
+    const candidate = block.find(value => value !== null && value !== undefined);
+    return normalizeBlockParam(candidate ?? "latest");
+  }
+  if (typeof block === "string") {
+    if (block.trim().length === 0) {
+      return "latest";
+    }
+    const lowered = block.toLowerCase();
+    if (["latest", "earliest", "pending", "safe", "finalized"].includes(lowered)) {
+      return lowered;
+    }
+    if (lowered.length >= 2 && lowered[0] === "0" && lowered[1] === "x") {
+      const trimmed = lowered.replace(/^0x0*/, "");
+      return trimmed.length ? `0x${trimmed}` : "0x0";
+    }
+    try {
+      const asBigInt = BigInt(block);
+      if (asBigInt < 0n) throw new Error();
+      return `0x${asBigInt.toString(16)}`;
+    } catch {
+      throw new Error(`Invalid block identifier: ${block}`);
+    }
+  }
+
+  const asBigInt = typeof block === "number" ? BigInt(Math.max(0, block)) : block;
+  if (asBigInt < 0n) {
+    throw new Error("Block number cannot be negative");
+  }
+  return `0x${asBigInt.toString(16)}`;
+}
+
+export async function fetchBlockInfo(block: bigint | number | string = "latest"): Promise<BlockInfo | null> {
+  const param = normalizeBlockParam(block);
+  const cacheKey =
+    typeof param === "string" && param.length >= 2 && param[0] === "0" && param[1] === "x"
+      ? param
+      : null;
+
+  if (cacheKey && blockCache.has(cacheKey)) {
+    return blockCache.get(cacheKey)!;
+  }
+
+  const response = await fetch(QUAI_RPC_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      id: 99,
+      jsonrpc: "2.0",
+      method: "quai_getBlockByNumber",
+      params: [param, false],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to fetch block metadata");
+  }
+
+  const data: QuaiBlockResponse = await response.json();
+  const blockResult = data.result?.woHeader;
+
+  if (!blockResult?.timestamp || !blockResult?.number) {
+    return null;
+  }
+
+  const number = BigInt(blockResult.number);
+  const timestampMs = Number.parseInt(blockResult.timestamp, 16) * 1000;
+
+  const info: BlockInfo = { number, timestampMs };
+  const numberKey = normalizeBlockParam(blockResult.number);
+
+  if (
+    typeof numberKey === "string" &&
+    numberKey.length >= 2 &&
+    numberKey[0] === "0" &&
+    numberKey[1] === "x"
+  ) {
+    blockCache.set(numberKey, info);
+  }
+  blockCache.set(number.toString(), info);
+
+  return info;
+}
+
+export async function getBlockTimestamp(block: bigint | number | string = "latest"): Promise<number | null> {
+  const info = await fetchBlockInfo(block);
+  return info ? info.timestampMs : null;
+}
+
+async function resolveBlockNumber(block: bigint | number | string | null | undefined): Promise<bigint> {
+  if (block === null || block === undefined) {
+    const latest = await fetchBlockInfo("latest");
+    if (!latest) throw new Error("Unable to resolve latest block number");
+    return latest.number;
+  }
+  if (typeof block === "bigint") {
+    if (block < 0n) throw new Error("Block number cannot be negative");
+    return block;
+  }
+  if (typeof block === "number") {
+    if (!Number.isFinite(block)) throw new Error(`Invalid block identifier: ${block}`);
+    if (block < 0) throw new Error("Block number cannot be negative");
+    return BigInt(Math.floor(block));
+  }
+  const trimmed = block.trim();
+  const lowered = trimmed.toLowerCase();
+  if (["latest", "pending", "safe", "finalized", "earliest"].includes(lowered)) {
+    const info = await fetchBlockInfo(lowered);
+    if (!info) {
+      throw new Error(`Failed to resolve block reference: ${block}`);
+    }
+    return info.number;
+  }
+  try {
+    const value = lowered.length >= 2 && lowered[0] === "0" && lowered[1] === "x"
+      ? BigInt(lowered)
+      : BigInt(lowered);
+    if (value < 0n) throw new Error();
+    return value;
+  } catch {
+    throw new Error(`Invalid block identifier: ${block}`);
+  }
+}
+
+function toStepBigInt(step?: bigint | number | string): bigint {
+  if (step === undefined) return 1n;
+  if (typeof step === "bigint") {
+    return step === 0n ? 1n : (step > 0n ? step : -step);
+  }
+  if (typeof step === "number") {
+    if (!Number.isFinite(step)) return 1n;
+    const value = BigInt(Math.floor(Math.abs(step)));
+    return value === 0n ? 1n : value;
+  }
+  const trimmed = step.trim().toLowerCase();
+  try {
+    const value = trimmed.length >= 2 && trimmed[0] === "0" && trimmed[1] === "x"
+      ? BigInt(trimmed)
+      : BigInt(trimmed);
+    if (value === 0n) return 1n;
+    return value > 0n ? value : -value;
+  } catch {
+    return 1n;
+  }
+}
+
+export function formatBlockHex(num: bigint): string {
+  return `0x${num.toString(16)}`;
+}
+
+function formatHexAmount(hexValue: string, decimals: number): string {
+  try {
+    const raw = BigInt(hexValue);
+    if (decimals <= 0) {
+      return raw.toString();
+    }
+
+    const base = BigInt(10) ** BigInt(decimals);
+    const integerPart = raw / base;
+    const fractionPart = raw % base;
+
+    if (fractionPart === 0n) {
+      return integerPart.toString();
+    }
+
+    const fraction = fractionPart
+      .toString()
+      .padStart(decimals, "0")
+      .replace(/0+$/, "");
+
+    return fraction.length
+      ? `${integerPart.toString()}.${fraction}`
+      : integerPart.toString();
+  } catch {
+    return "0";
+  }
+}
+
+export interface QiToQuaiSnapshot {
+  blockNumber: string;
+  blockNumberHex: string;
+  timestamp: number;
+  isoTimestamp: string;
+  rate: string;
+}
+
+export interface QiToQuaiSnapshotsOptions {
+  startBlock: bigint | number | string;
+  endBlock: bigint | number | string;
+  blockInterval?: bigint | number | string;
+  amount?: string;
+  maxSamples?: number;
+}
+
+export async function fetchQiToQuaiSnapshots(options: QiToQuaiSnapshotsOptions): Promise<QiToQuaiSnapshot[]> {
+  const {
+    startBlock,
+    endBlock,
+    blockInterval,
+    amount = "0x3E8",
+    maxSamples = 1000,
+  } = options;
+
+  if (maxSamples <= 0) {
+    throw new Error("maxSamples must be greater than zero");
+  }
+
+  const start = await resolveBlockNumber(startBlock);
+  const end = await resolveBlockNumber(endBlock);
+  const step = toStepBigInt(blockInterval);
+  const forward = start <= end;
+
+  const snapshots: QiToQuaiSnapshot[] = [];
+  let iterations = 0;
+
+  for (
+    let current = start;
+    forward ? current <= end : current >= end;
+    current = forward ? current + step : current - step
+  ) {
+    if (iterations++ >= maxSamples) {
+      break;
+    }
+
+    const blockInfo = await fetchBlockInfo(current);
+    if (!blockInfo) {
+      continue;
+    }
+
+    const rate = await fetchQiToQuai(amount, blockInfo.number);
+    const timestamp = blockInfo.timestampMs;
+
+    snapshots.push({
+      blockNumber: blockInfo.number.toString(),
+      blockNumberHex: formatBlockHex(blockInfo.number),
+      timestamp,
+      isoTimestamp: new Date(timestamp).toISOString(),
+      rate,
+    });
+  }
+
+  if (!forward) {
+    snapshots.reverse();
+  }
+
+  return snapshots;
+}
+
 // Last known values to use as fallbacks
 let lastQiToQuaiRate: string | null = null;
 let lastQuaiToQiRate: string | null = null;
@@ -37,76 +315,22 @@ let lastQuaiUsdPrice: number | null = null;
 let lastQiUsdPrice: number | null = null;
 let lastUpdatedTimestamp: number = Date.now();
 
-// Separate price history for QI and QUAI
-let qiPriceHistory: Array<{ timestamp: number; price: number }> = [];
-let quaiPriceHistory: Array<{ timestamp: number; price: number }> = [];
-
 // Maintain a small buffer of raw QI/USD samples to smooth spikes
 let qiRawBuffer: number[] = [];
 const MAX_RAW_BUFFER = 5;
 
-// --- Persistence helpers (localStorage) ---
-const isBrowser = typeof window !== 'undefined' && !!window.localStorage;
-const STORAGE_KEYS = {
-  qi: 'quaiqi:qiPriceHistory',
-  quai: 'quaiqi:quaiPriceHistory',
-  lastQiUsd: 'quaiqi:lastQiUsdPrice',
-  lastQuaiUsd: 'quaiqi:lastQuaiUsdPrice',
-  lastUpdated: 'quaiqi:lastUpdatedTs',
-  version: 'quaiqi:storageVersion',
-} as const;
-
-const STORAGE_VERSION = '2';
-
-// Keep at most this much history by timestamp (30 days)
+// Keep at most this much history by timestamp (30 days) for in-memory smoothing
 const MAX_HISTORY_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-// Only persist a new point if at least this much time passed since last saved (1 minute)
+// Only record a new point if at least this much time passed since the last saved (1 minute)
 const MIN_SAMPLE_INTERVAL_MS = 60 * 1000;
 
-function loadArrayFromStorage(key: string): Array<{ timestamp: number; price: number }> {
-  if (!isBrowser) return [];
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Array<{ timestamp: number; price: number }>;
-    const now = Date.now();
-    // Filter out anything older than MAX_HISTORY_AGE_MS or malformed
-    const filtered = (Array.isArray(parsed) ? parsed : []).filter(p => {
-      return (
-        p && typeof p.timestamp === 'number' && typeof p.price === 'number' &&
-        now - p.timestamp <= MAX_HISTORY_AGE_MS && p.timestamp <= now
-      );
-    });
-    return filtered;
-  } catch {
-    return [];
-  }
-}
+type PriceHistoryPoint = { timestamp: number; price: number };
 
-function saveArrayToStorage(key: string, arr: Array<{ timestamp: number; price: number }>) {
-  if (!isBrowser) return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(arr));
-  } catch {
-    // Ignore storage errors (quota, etc.)
-  }
-}
+let qiPriceHistory: PriceHistoryPoint[] = [];
+let quaiPriceHistory: PriceHistoryPoint[] = [];
 
 function maybePersistLastValues() {
-  if (!isBrowser) return;
-  try {
-    // Only persist QI after we have at least 2 raw samples to avoid storing a bad first tick
-    if (typeof lastQiUsdPrice === 'number' && qiRawBuffer.length >= 2) {
-      window.localStorage.setItem(STORAGE_KEYS.lastQiUsd, String(lastQiUsdPrice));
-    }
-    if (typeof lastQuaiUsdPrice === 'number') {
-      window.localStorage.setItem(STORAGE_KEYS.lastQuaiUsd, String(lastQuaiUsdPrice));
-    }
-    window.localStorage.setItem(STORAGE_KEYS.lastUpdated, String(lastUpdatedTimestamp));
-    window.localStorage.setItem(STORAGE_KEYS.version, STORAGE_VERSION);
-  } catch {
-    // ignore
-  }
+  // Persistence disabled per requirements; we keep runtime values only.
 }
 
 function addHistoryPoint(
@@ -131,39 +355,8 @@ function addHistoryPoint(
 
   if (kind === 'qi') {
     qiPriceHistory = updated;
-    saveArrayToStorage(STORAGE_KEYS.qi, qiPriceHistory);
   } else {
     quaiPriceHistory = updated;
-    saveArrayToStorage(STORAGE_KEYS.quai, quaiPriceHistory);
-  }
-}
-
-// Initialize from localStorage on module load (browser only)
-if (isBrowser) {
-  // Simple versioned init: if structure changes, clear stale keys once
-  try {
-    const ver = window.localStorage.getItem(STORAGE_KEYS.version);
-    if (ver !== STORAGE_VERSION) {
-      window.localStorage.removeItem(STORAGE_KEYS.qi);
-      window.localStorage.removeItem(STORAGE_KEYS.quai);
-      window.localStorage.removeItem(STORAGE_KEYS.lastQiUsd);
-      window.localStorage.removeItem(STORAGE_KEYS.lastQuaiUsd);
-      window.localStorage.removeItem(STORAGE_KEYS.lastUpdated);
-      window.localStorage.setItem(STORAGE_KEYS.version, STORAGE_VERSION);
-    }
-  } catch {}
-
-  qiPriceHistory = loadArrayFromStorage(STORAGE_KEYS.qi);
-  quaiPriceHistory = loadArrayFromStorage(STORAGE_KEYS.quai);
-  try {
-    const lastQi = window.localStorage.getItem(STORAGE_KEYS.lastQiUsd);
-    const lastQuai = window.localStorage.getItem(STORAGE_KEYS.lastQuaiUsd);
-    const lastTs = window.localStorage.getItem(STORAGE_KEYS.lastUpdated);
-    lastQiUsdPrice = lastQi !== null ? Number(lastQi) : lastQiUsdPrice;
-    lastQuaiUsdPrice = lastQuai !== null ? Number(lastQuai) : lastQuaiUsdPrice;
-    lastUpdatedTimestamp = lastTs !== null ? Number(lastTs) : lastUpdatedTimestamp;
-  } catch {
-    // ignore
   }
 }
 
@@ -195,23 +388,17 @@ export async function fetchConversionAmountAfterSlip(amount: string, direction: 
     const quaiAddress = "0x0000000000000000000000000000000000000000"
     const qiAddress = "0x0090000000000000000000000000000000000000"
 
-    var from;
-    var to;
-    if (direction === "quaiToQi") {
-      from = quaiAddress
-      to = qiAddress
-    } else {
-      from = qiAddress
-      to = quaiAddress
-    }
+    const [from, to] = direction === "quaiToQi"
+      ? [quaiAddress, qiAddress]
+      : [qiAddress, quaiAddress];
 
-    var txArgs = {
-      from: from,
-      to: to,
+    const txArgs = {
+      from,
+      to,
       value: amount,
     }
 
-    const response = await fetch("https://rpc.quai.network/cyprus1", {
+    const response = await fetch(QUAI_RPC_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -237,9 +424,13 @@ export async function fetchConversionAmountAfterSlip(amount: string, direction: 
   }
 }
 
-export async function fetchQiToQuai(amount = "0x3E8"): Promise<string> {
+export async function fetchQiToQuai(
+  amount = "0x3E8",
+  block: bigint | number | string = "latest"
+): Promise<string> {
   try {
-    const response = await fetch("https://rpc.quai.network/cyprus1", {
+    const blockParam = normalizeBlockParam(block);
+    const response = await fetch(QUAI_RPC_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -248,7 +439,7 @@ export async function fetchQiToQuai(amount = "0x3E8"): Promise<string> {
         id: 1,
         jsonrpc: "2.0",
         method: "quai_qiToQuai",
-        params: [amount, "latest"],
+        params: [amount, blockParam],
       }),
     });
 
@@ -257,8 +448,10 @@ export async function fetchQiToQuai(amount = "0x3E8"): Promise<string> {
     }
 
     const data: QuaiResponse = await response.json();
-    lastQiToQuaiRate = data.result;
-    lastUpdatedTimestamp = Date.now();
+    if (blockParam === "latest" || blockParam === "pending") {
+      lastQiToQuaiRate = data.result;
+      lastUpdatedTimestamp = Date.now();
+    }
     return data.result;
   } catch (error) {
     console.error("Error fetching QI to QUAI rate:", error);
@@ -266,9 +459,13 @@ export async function fetchQiToQuai(amount = "0x3E8"): Promise<string> {
   }
 }
 
-export async function fetchQuaiToQi(amount = "0xDE0B6B3A7640000"): Promise<string> {
+export async function fetchQuaiToQi(
+  amount = "0xDE0B6B3A7640000",
+  block: bigint | number | string = "latest"
+): Promise<string> {
   try {
-    const response = await fetch("https://rpc.quai.network/cyprus1", {
+    const blockParam = normalizeBlockParam(block);
+    const response = await fetch(QUAI_RPC_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -277,7 +474,7 @@ export async function fetchQuaiToQi(amount = "0xDE0B6B3A7640000"): Promise<strin
         id: 2,
         jsonrpc: "2.0",
         method: "quai_quaiToQi",
-        params: [amount, "latest"],
+        params: [amount, blockParam],
       }),
     });
 
@@ -286,8 +483,10 @@ export async function fetchQuaiToQi(amount = "0xDE0B6B3A7640000"): Promise<strin
     }
 
     const data: QuaiResponse = await response.json();
-    lastQuaiToQiRate = data.result;
-    lastUpdatedTimestamp = Date.now();
+    if (blockParam === "latest" || blockParam === "pending") {
+      lastQuaiToQiRate = data.result;
+      lastUpdatedTimestamp = Date.now();
+    }
     return data.result;
   } catch (error) {
     console.error("Error fetching QUAI to QI rate:", error);
@@ -297,16 +496,31 @@ export async function fetchQuaiToQi(amount = "0xDE0B6B3A7640000"): Promise<strin
 
 export async function fetchQuaiUsdPrice(): Promise<number> {
   try {
-    const response = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=quai-network&vs_currencies=usd"
-    );
+    const response = await fetch(LLAMA_PRICE_URL, {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+      },
+      cache: "no-store",
+    });
 
     if (!response.ok) {
       throw new Error("Network response was not ok");
     }
 
-    const data: CoinGeckoResponse = await response.json();
-    lastQuaiUsdPrice = data["quai-network"].usd;
+    const data: PriceProviderResponse = await response.json();
+
+    const priceFromCoins = data.coins?.["coingecko:quai-network"]?.price;
+    const priceFromLegacy = data["quai-network"]?.usd;
+    const price = typeof priceFromCoins === "number" && priceFromCoins > 0
+      ? priceFromCoins
+      : (typeof priceFromLegacy === "number" && priceFromLegacy > 0 ? priceFromLegacy : NaN);
+
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new Error("Price provider returned no price");
+    }
+
+    lastQuaiUsdPrice = price;
     lastUpdatedTimestamp = Date.now();
 
     // Add to QUAI history and persist
@@ -316,6 +530,34 @@ export async function fetchQuaiUsdPrice(): Promise<number> {
     return lastQuaiUsdPrice;
   } catch (error) {
     console.error("Error fetching QUAI USD price:", error);
+    if (!lastQuaiUsdPrice) {
+      // Fallback to CoinGecko once if we haven't cached anything yet
+      try {
+        const response = await fetch(
+          "https://api.coingecko.com/api/v3/simple/price?ids=quai-network&vs_currencies=usd",
+          {
+            method: "GET",
+            headers: {
+              "Accept": "application/json",
+            },
+            cache: "no-store",
+          }
+        );
+        if (response.ok) {
+          const data: PriceProviderResponse = await response.json();
+          const price = data["quai-network"]?.usd;
+          if (typeof price === "number" && price > 0) {
+            lastQuaiUsdPrice = price;
+            lastUpdatedTimestamp = Date.now();
+            addHistoryPoint('quai', { timestamp: lastUpdatedTimestamp, price });
+            maybePersistLastValues();
+            return price;
+          }
+        }
+      } catch (fallbackError) {
+        console.error("CoinGecko fallback failed:", fallbackError);
+      }
+    }
     return lastQuaiUsdPrice || 0.068177;
   }
 }
@@ -379,7 +621,7 @@ export async function calculateQiUsdPrice(
         const mid = Math.floor(a.length / 2);
         return a.length % 2 ? a[mid] : (a[mid - 1] + a[mid]) / 2;
       };
-      let candidate = median(qiRawBuffer);
+      const candidate = median(qiRawBuffer);
 
       lastQiUsdPrice = candidate;
 
@@ -421,14 +663,11 @@ export async function calculateConversionAmount(
     const direction = tokenIn.toUpperCase() === "QUAI" ? 'quaiToQi' : 'qiToQuai';
 
     // convert the bigint amount to hex value for all the apis
-    var amountInHex = '0x' + amountIn.toString(16);
+    const amountInHex = `0x${amountIn.toString(16)}`;
 
-    var amountWithoutSlip;
-    if (direction === "quaiToQi") {
-      amountWithoutSlip = await fetchQuaiToQi(amountInHex);
-    } else {
-      amountWithoutSlip = await fetchQiToQuai(amountInHex);
-    }
+    const amountWithoutSlip = direction === "quaiToQi"
+      ? await fetchQuaiToQi(amountInHex)
+      : await fetchQiToQuai(amountInHex);
 
     // Calculate dynamic slippage
     const amountLeftAfterSlip = await fetchConversionAmountAfterSlip(amountInHex, direction);
@@ -458,18 +697,11 @@ export async function calculateConversionAmount(
       amountLeftAfterSlip   // e.g. "0x2308c5d4a10000"
     );
 
+    const formattedAmountOut = formatHexAmount(amountLeftAfterSlip, direction === "quaiToQi" ? 3 : 18);
 
-    var amountLeft;
-    if (direction === "quaiToQi") {
-      // convert the hex number into quai or qi uints by removing 18 decimals for quai and 3 for qi
-      amountLeft = parseInt(amountLeftAfterSlip, 16) / 10 ** 3;
-    } else {
-      amountLeft = parseInt(amountLeftAfterSlip, 16) / 10 ** 18;
-    }
-      
 
     return {
-      amountOut: amountLeft,
+      amountOut: formattedAmountOut,
       effectiveRate: "0",
       slippage: `${slip.toString()}%`
     };
@@ -482,16 +714,6 @@ export async function calculateConversionAmount(
       slippage: "0%"
     };
   }
-}
-
-export function getPriceHistory() {
-  // Do not synthesize bootstrap points; require at least 2 real samples
-  if (qiPriceHistory.length < 2) return [];
-  return qiPriceHistory;
-}
-
-export function getQuaiPriceHistory() {
-  return quaiPriceHistory;
 }
 
 export function getLastUpdatedTime(): number {
