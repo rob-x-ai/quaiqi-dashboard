@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { format } from "date-fns";
@@ -56,8 +56,12 @@ export function PriceChart() {
   const [timeRange, setTimeRange] = useState<QiHistoryRange>("1h");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingMessage, setLoadingMessage] = useState<string>("Loading QI history…");
+  const priceDataRef = useRef<ChartData[]>([]);
 
   useEffect(() => {
+    setPriceData([]);
+    priceDataRef.current = [];
     let cancelled = false;
     let activeController: AbortController | null = null;
 
@@ -71,6 +75,11 @@ export function PriceChart() {
 
       setIsLoading(true);
       setError(null);
+      setLoadingMessage(
+        priceDataRef.current.length > 0
+          ? "Refreshing data – high traffic, please wait…"
+          : "Loading cached QI history…"
+      );
       try {
         const response = await fetchWithRetry(
           `/api/qi-history?range=${timeRange}`,
@@ -89,15 +98,15 @@ export function PriceChart() {
         const history = Array.isArray(payload?.data) ? payload.data : [];
 
         if (!cancelled) {
-          setPriceData(
-            history
-              .map((point: { timestamp_ms?: number; timestamp?: number; price?: number }) => ({
-                timestamp: Number(point.timestamp_ms ?? point.timestamp),
-                price: Number(point.price ?? 0),
-              }))
-              .filter(item => Number.isFinite(item.timestamp) && Number.isFinite(item.price) && item.price > 0)
-              .sort((a, b) => a.timestamp - b.timestamp)
-          );
+          const processed = history
+            .map((point: { timestamp_ms?: number; timestamp?: number; price?: number }) => ({
+              timestamp: Number(point.timestamp_ms ?? point.timestamp),
+              price: Number(point.price ?? 0),
+            }))
+            .filter(item => Number.isFinite(item.timestamp) && Number.isFinite(item.price) && item.price > 0)
+            .sort((a, b) => a.timestamp - b.timestamp);
+          priceDataRef.current = processed;
+          setPriceData(processed);
         }
       } catch (err: unknown) {
         const controllerWasReplaced = activeController !== null && activeController !== controller;
@@ -111,6 +120,7 @@ export function PriceChart() {
         console.error("Failed to fetch QI price history:", err);
         if (!cancelled) {
           setError("Unable to load historical data. Retrying shortly…");
+          setLoadingMessage("Experiencing heavy traffic – retrying…");
         }
       } finally {
         if (activeController === controller) {
@@ -118,6 +128,7 @@ export function PriceChart() {
         }
         if (!cancelled) {
           setIsLoading(false);
+          setLoadingMessage("Loading QI history…");
         }
       }
     };
@@ -200,50 +211,58 @@ export function PriceChart() {
         {error && (
           <div className="mb-2 text-center text-xs text-muted-foreground">{error}</div>
         )}
-        {priceData.length > 0 ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={priceData} margin={{ top: 12, right: 16, left: 8, bottom: 8 }}>
-              <CartesianGrid stroke={gridColor} strokeOpacity={0.3} />
-              <XAxis
-                dataKey="timestamp"
-                tickFormatter={formatXAxis}
-                stroke={gridColor}
-                tick={{ fontSize: 12, fill: axisColor }}
-                tickLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
-                axisLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
-              />
-              <YAxis
-                domain={priceDomain ?? ["auto", "auto"]}
-                stroke={gridColor}
-                tick={{ fontSize: 12, fill: axisColor }}
-                tickLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
-                axisLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
-                tickFormatter={(value) => {
-                  const significantSpread = priceDomain ? (priceDomain[1] - priceDomain[0]) : 0;
-                  const decimals = significantSpread < 0.01 ? 4 : 2;
-                  return `$${value.toFixed(decimals)}`;
-                }}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Line
-                type="natural"
-                dataKey="price"
-                strokeWidth={2.5}
-                stroke={lineColor}
-                dot={false}
-                activeDot={{ r: 6, stroke: lineColor, strokeWidth: 2, fill: "hsl(var(--background))" }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        ) : isLoading ? (
-          <ChartLoader text="Fetching fresh QI history…" />
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-muted-foreground">
-              {isLoading ? "Fetching QI price history…" : "No data available for this range yet."}
-            </p>
-          </div>
-        )}
+        <div className="relative h-full">
+          {priceData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={priceData} margin={{ top: 12, right: 16, left: 8, bottom: 8 }}>
+                <CartesianGrid stroke={gridColor} strokeOpacity={0.3} />
+                <XAxis
+                  dataKey="timestamp"
+                  tickFormatter={formatXAxis}
+                  stroke={gridColor}
+                  tick={{ fontSize: 12, fill: axisColor }}
+                  tickLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
+                  axisLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
+                />
+                <YAxis
+                  domain={priceDomain ?? ["auto", "auto"]}
+                  stroke={gridColor}
+                  tick={{ fontSize: 12, fill: axisColor }}
+                  tickLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
+                  axisLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
+                  tickFormatter={(value) => {
+                    const significantSpread = priceDomain ? (priceDomain[1] - priceDomain[0]) : 0;
+                    const decimals = significantSpread < 0.01 ? 4 : 2;
+                    return `$${value.toFixed(decimals)}`;
+                  }}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Line
+                  type="natural"
+                  dataKey="price"
+                  strokeWidth={2.5}
+                  stroke={lineColor}
+                  dot={false}
+                  activeDot={{ r: 6, stroke: lineColor, strokeWidth: 2, fill: "hsl(var(--background))" }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : isLoading ? (
+            <ChartLoader text={loadingMessage} />
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-muted-foreground">
+                {isLoading ? "Fetching QI price history…" : "No data available for this range yet."}
+              </p>
+            </div>
+          )}
+          {isLoading && priceData.length > 0 && (
+            <ChartLoader
+              text={loadingMessage}
+              className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm"
+            />
+          )}
+        </div>
       </CardContent>
     </Card>
   );
