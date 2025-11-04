@@ -12,7 +12,7 @@ interface ChartData {
 
 type QiHistoryRange = "1h" | "24h" | "7d" | "30d" | "6m";
 
-const REQUEST_TIMEOUT_MS = 20000;
+const REQUEST_TIMEOUT_MS = 60000;
 const MAX_RETRIES = 2;
 
 async function fetchWithRetry(
