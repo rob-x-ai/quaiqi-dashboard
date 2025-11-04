@@ -5,9 +5,9 @@ import {
 } from "./cryptoApi.js";
 
 const QI_HISTORY_RANGE_CONFIG = {
-  "1h": { durationMs: 60 * 60 * 1000, samples: 60 },
-  "24h": { durationMs: 24 * 60 * 60 * 1000, samples: 96 },
-  "7d": { durationMs: 7 * 24 * 60 * 60 * 1000, samples: 168 },
+  "1h": { durationMs: 60 * 60 * 1000, samples: 240 },
+  "24h": { durationMs: 24 * 60 * 60 * 1000, samples: 288 },
+  "7d": { durationMs: 7 * 24 * 60 * 60 * 1000, samples: 336 },
   "30d": { durationMs: 30 * 24 * 60 * 60 * 1000, samples: 180 },
   "6m": { durationMs: 182 * 24 * 60 * 60 * 1000, samples: 186 },
 } as const;
@@ -15,7 +15,7 @@ const QI_HISTORY_RANGE_CONFIG = {
 const RANGE_BUCKET_MS: Record<QiHistoryRange, number> = {
   "1h": 30 * 1000, // 30 seconds
   "24h": 5 * 60 * 1000, // 5 minutes
-  "7d": 60 * 60 * 1000, // 1 hour
+  "7d": 30 * 60 * 1000, // 30 minutes
   "30d": 6 * 60 * 60 * 1000, // 6 hours
   "6m": 24 * 60 * 60 * 1000, // 1 day
 };
@@ -23,16 +23,19 @@ const RANGE_BUCKET_MS: Record<QiHistoryRange, number> = {
 const RANGE_SMOOTHING_WINDOW: Partial<Record<QiHistoryRange, number>> = {
   "1h": 5,
   "24h": 7,
+  "7d": 9,
 };
 
 const RANGE_SMOOTHING_ALPHA: Partial<Record<QiHistoryRange, number>> = {
   "1h": 0.35,
   "24h": 0.3,
+  "7d": 0.25,
 };
 
 const RANGE_DENSIFY_SEGMENTS: Partial<Record<QiHistoryRange, number>> = {
   "1h": 4,
   "24h": 4,
+  "7d": 2,
 };
 
 export type QiHistoryRange = keyof typeof QI_HISTORY_RANGE_CONFIG;
@@ -207,10 +210,12 @@ export async function fetchQiPriceHistoryFromRpc(range: QiHistoryRange): Promise
     workingPoints = reduced;
   }
 
+  const densifyFactor = RANGE_DENSIFY_SEGMENTS[range] ?? 1;
   workingPoints = densifyPoints(range, workingPoints);
 
-  if (workingPoints.length > samples) {
-    const stride = Math.ceil(workingPoints.length / samples);
+  const maxSamples = samples * densifyFactor;
+  if (workingPoints.length > maxSamples) {
+    const stride = Math.ceil(workingPoints.length / maxSamples);
     const reduced: QiPriceHistoryPoint[] = [];
     for (let i = 0; i < workingPoints.length; i += stride) {
       reduced.push(workingPoints[i]);

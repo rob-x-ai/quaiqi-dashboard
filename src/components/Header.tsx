@@ -26,8 +26,8 @@ export function Header() {
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b">
       <div className="container flex items-center justify-between h-16">
         <div className="flex items-center space-x-2">
-          <img src="/Logo.svg" alt="QUAI Logo" className="w-8 h-8" />
-          <span className="font-bold text-xl">QUAI-QI</span>
+          <img src="/Logo.svg" alt="quai.red logo" className="w-8 h-8" />
+          <span className="font-bold text-xl">quai.red</span>
         </div>
         <div className="flex items-center space-x-4">
           {lastUpdated && (

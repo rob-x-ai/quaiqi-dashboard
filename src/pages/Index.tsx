@@ -3,6 +3,8 @@ import { Header } from "@/components/Header";
 import { PriceCard } from "@/components/PriceCard";
 import { CurrencyConverter } from "@/components/CurrencyConverter";
 import { PriceChart } from "@/components/PriceChart";
+import { Footer } from "@/components/Footer";
+import { KipperChip } from "@/components/KipperChip";
 import {
   fetchQiToQuai,
   fetchQuaiToQi,
@@ -102,9 +104,9 @@ const Index = () => {
       <main className="flex-1 container pt-24 pb-16">
         <div className="space-y-10">
           <section>
-            <h1 className="text-3xl font-bold mb-2">QUAI/QI Conversion Dashboard</h1>
+            <h1 className="text-3xl font-bold mb-2">quai.red – QUAI/QI</h1>
             <p className="text-muted-foreground mb-8">
-              Real-time conversion rates and USD prices for QUAI and QI
+              Real-time conversion rates, USD benchmarks, and on-chain history for Quai Network’s assets.
             </p>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -147,7 +149,7 @@ const Index = () => {
             <div className="space-y-2">
               <h2 className="text-2xl font-semibold mb-4">Conversion Calculator</h2>
               <p className="text-sm text-muted-foreground mb-4">
-                Calculate how much you would receive when swapping between QI and QUAI, 
+                Calculate how much you would receive when swapping between QI and QUAI,
                 including slippage and fees.
               </p>
               <CurrencyConverter
@@ -166,6 +168,8 @@ const Index = () => {
           </section>
         </div>
       </main>
+      <Footer />
+      <KipperChip />
     </div>
   );
 };
