@@ -5,6 +5,7 @@ import { componentTagger } from "lovable-tagger";
 
 export default defineConfig(({ mode }) => {
   const port = Number(process.env.PORT ?? 5173);
+  const apiPort = Number(process.env.API_PROXY_PORT ?? 4000);
   const shouldProxyApi = port !== 3000;
 
   return {
@@ -14,7 +15,7 @@ export default defineConfig(({ mode }) => {
       proxy: shouldProxyApi
         ? {
             "/api": {
-              target: "http://localhost:3000",
+              target: `http://localhost:${apiPort}`,
               changeOrigin: true,
             },
           }
