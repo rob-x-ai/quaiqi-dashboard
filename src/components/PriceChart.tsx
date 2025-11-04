@@ -15,29 +15,39 @@ type QiHistoryRange = "1h" | "24h" | "7d" | "30d" | "6m";
 const REQUEST_TIMEOUT_MS = 20000;
 const MAX_RETRIES = 2;
 
-async function fetchWithRetry(url: string, options: RequestInit, retries = MAX_RETRIES): Promise<Response> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const controller = new AbortController();
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries = MAX_RETRIES,
+  externalController?: AbortController
+): Promise<Response> {
+  const maxAttempts = externalController ? 1 : retries + 1;
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const controller = externalController ?? new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
       const response = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timeout);
       if (!response.ok) {
         throw new Error(`Request failed with status ${response.status}`);
       }
+      clearTimeout(timeout);
       return response;
     } catch (error) {
+      lastError = error;
       clearTimeout(timeout);
-      const isLastAttempt = attempt === retries;
       const isAbortError = error instanceof DOMException && error.name === "AbortError";
-      if (isLastAttempt || !isAbortError) {
+      const isLastAttempt = attempt === maxAttempts - 1;
+
+      if (isLastAttempt || (externalController && isAbortError)) {
         throw error;
       }
       // brief backoff before retrying a timeout
       await new Promise(resolve => setTimeout(resolve, 750 * (attempt + 1)));
     }
   }
-  throw new Error("Unable to fetch data");
+  throw lastError ?? new Error("Unable to fetch data");
 }
 
 export function PriceChart() {
@@ -48,8 +58,16 @@ export function PriceChart() {
 
   useEffect(() => {
     let cancelled = false;
+    let activeController: AbortController | null = null;
 
     const load = async () => {
+      // Cancel any in-flight request before starting a new one
+      if (activeController) {
+        activeController.abort();
+      }
+      const controller = new AbortController();
+      activeController = controller;
+
       setIsLoading(true);
       setError(null);
       try {
@@ -61,7 +79,9 @@ export function PriceChart() {
               "Accept": "application/json",
             },
             cache: "no-store",
-          }
+          },
+          MAX_RETRIES,
+          controller
         );
 
         const payload = await response.json();
@@ -78,12 +98,23 @@ export function PriceChart() {
               .sort((a, b) => a.timestamp - b.timestamp)
           );
         }
-      } catch (err) {
+      } catch (err: unknown) {
+        const controllerWasReplaced = activeController !== null && activeController !== controller;
+        const abortedByNewLoad =
+          controllerWasReplaced || (controller.signal.aborted && !cancelled);
+
+        if (abortedByNewLoad) {
+          return;
+        }
+
         console.error("Failed to fetch QI price history:", err);
         if (!cancelled) {
           setError("Unable to load historical data. Retrying shortly…");
         }
       } finally {
+        if (activeController === controller) {
+          activeController = null;
+        }
         if (!cancelled) {
           setIsLoading(false);
         }
@@ -94,6 +125,7 @@ export function PriceChart() {
     const interval = setInterval(load, 5 * 60 * 1000);
     return () => {
       cancelled = true;
+      activeController?.abort();
       clearInterval(interval);
     };
   }, [timeRange]);
