@@ -18,10 +18,9 @@ export function KipperChip({ defaultVisible = true }: { defaultVisible?: boolean
         href="https://kipper.money/r/cmevbba2a0001ky04elop2ekn"
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary-foreground underline-offset-2 hover:underline"
+        className="inline-flex items-center text-[11px] font-semibold text-primary-foreground underline-offset-2 hover:underline"
       >
-        Earn QUAI on Kipper on 𝕏
-        <span aria-hidden>→</span>
+        Talk about QUAI on 𝕏 → earn $QUAI tips
       </a>
     </div>
   );
