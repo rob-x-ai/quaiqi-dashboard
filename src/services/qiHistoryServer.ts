@@ -12,6 +12,19 @@ const QI_HISTORY_RANGE_CONFIG = {
   "6m": { durationMs: 182 * 24 * 60 * 60 * 1000, samples: 186 },
 } as const;
 
+const RANGE_BUCKET_MS: Record<QiHistoryRange, number> = {
+  "1h": 60 * 1000, // 1 minute
+  "24h": 10 * 60 * 1000, // 10 minutes
+  "7d": 60 * 60 * 1000, // 1 hour
+  "30d": 6 * 60 * 60 * 1000, // 6 hours
+  "6m": 24 * 60 * 60 * 1000, // 1 day
+};
+
+const RANGE_SMOOTHING_WINDOW: Partial<Record<QiHistoryRange, number>> = {
+  "1h": 3,
+  "24h": 5,
+};
+
 export type QiHistoryRange = keyof typeof QI_HISTORY_RANGE_CONFIG;
 
 export interface QiPriceHistoryPoint {
@@ -135,18 +148,80 @@ export async function fetchQiPriceHistoryFromRpc(range: QiHistoryRange): Promise
 
   points.sort((a, b) => a.timestamp - b.timestamp);
 
-  if (points.length > samples) {
-    const stride = Math.ceil(points.length / samples);
-    const reduced: QiPriceHistoryPoint[] = [];
-    for (let i = 0; i < points.length; i += stride) {
-      reduced.push(points[i]);
+  const bucketSize = RANGE_BUCKET_MS[range];
+  const bucketed: QiPriceHistoryPoint[] = [];
+  let currentBucket: { key: number; sum: number; count: number; lastTimestamp: number; lastBlock: string } | null = null;
+
+  const flushBucket = () => {
+    if (!currentBucket || currentBucket.count === 0) return;
+    bucketed.push({
+      timestamp: currentBucket.lastTimestamp,
+      price: currentBucket.sum / currentBucket.count,
+      blockNumberHex: currentBucket.lastBlock,
+    });
+    currentBucket = null;
+  };
+
+  for (const point of points) {
+    const bucketKey = Math.floor(point.timestamp / bucketSize) * bucketSize;
+    if (!currentBucket || bucketKey !== currentBucket.key) {
+      flushBucket();
+      currentBucket = {
+        key: bucketKey,
+        sum: point.price,
+        count: 1,
+        lastTimestamp: point.timestamp,
+        lastBlock: point.blockNumberHex,
+      };
+    } else {
+      currentBucket.sum += point.price;
+      currentBucket.count += 1;
+      currentBucket.lastTimestamp = point.timestamp;
+      currentBucket.lastBlock = point.blockNumberHex;
     }
-    const lastPoint = points[points.length - 1];
+  }
+  flushBucket();
+
+  let workingPoints = smoothPoints(range, bucketed);
+
+  if (workingPoints.length > samples) {
+    const stride = Math.ceil(workingPoints.length / samples);
+    const reduced: QiPriceHistoryPoint[] = [];
+    for (let i = 0; i < workingPoints.length; i += stride) {
+      reduced.push(workingPoints[i]);
+    }
+    const lastPoint = workingPoints[workingPoints.length - 1];
     if (!reduced.length || reduced[reduced.length - 1].timestamp !== lastPoint.timestamp) {
       reduced.push(lastPoint);
     }
-    return reduced;
+    workingPoints = reduced;
   }
 
-  return points;
+  return workingPoints;
+}
+function smoothPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
+  const windowSize = RANGE_SMOOTHING_WINDOW[range];
+  if (!windowSize || windowSize <= 1 || points.length <= windowSize) {
+    return points;
+  }
+
+  const halfWindow = Math.floor(windowSize / 2);
+  const smoothed: QiPriceHistoryPoint[] = [];
+
+  for (let i = 0; i < points.length; i++) {
+    let sum = 0;
+    let count = 0;
+    for (let j = i - halfWindow; j <= i + halfWindow; j++) {
+      if (j < 0 || j >= points.length) continue;
+      sum += points[j].price;
+      count += 1;
+    }
+    smoothed.push({
+      timestamp: points[i].timestamp,
+      price: sum / Math.max(1, count),
+      blockNumberHex: points[i].blockNumberHex,
+    });
+  }
+
+  return smoothed;
 }
