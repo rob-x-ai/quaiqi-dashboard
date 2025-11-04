@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { getLastUpdatedTime } from "@/services/cryptoApi";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Github } from "lucide-react";
 import { format } from "date-fns";
 
 export function Header() {
@@ -36,6 +36,15 @@ export function Header() {
               <span>Data Updated: {format(lastUpdated, "HH:mm:ss")}</span>
             </div>
           )}
+          <a
+            href="https://github.com/rob-x-ai/quai.red"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="View source on GitHub"
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Github className="h-5 w-5" />
+          </a>
           <ThemeToggle />
         </div>
       </div>
