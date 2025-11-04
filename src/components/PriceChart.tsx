@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { format } from "date-fns";
@@ -171,6 +171,16 @@ export function PriceChart() {
     return null;
   };
 
+  const priceDomain = useMemo(() => {
+    if (!priceData.length) return null;
+    const values = priceData.map(point => point.price);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const spread = max - min;
+    const padding = spread > 0 ? spread * 0.1 : (max || 1) * 0.01;
+    return [min - padding, max + padding] as [number, number];
+  }, [priceData]);
+
   return (
     <Card className="w-full h-[400px] card-glow">
       <CardHeader className="pb-0">
@@ -202,16 +212,20 @@ export function PriceChart() {
                 axisLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
               />
               <YAxis
-                domain={["auto", "auto"]}
+                domain={priceDomain ?? ["auto", "auto"]}
                 stroke={gridColor}
                 tick={{ fontSize: 12, fill: axisColor }}
                 tickLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
                 axisLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
-                tickFormatter={(value) => `$${value.toFixed(2)}`}
+                tickFormatter={(value) => {
+                  const significantSpread = priceDomain ? (priceDomain[1] - priceDomain[0]) : 0;
+                  const decimals = significantSpread < 0.01 ? 4 : 2;
+                  return `$${value.toFixed(decimals)}`;
+                }}
               />
               <Tooltip content={<CustomTooltip />} />
               <Line
-                type="monotone"
+                type="natural"
                 dataKey="price"
                 strokeWidth={2.5}
                 stroke={lineColor}

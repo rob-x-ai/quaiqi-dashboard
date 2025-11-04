@@ -34,6 +34,11 @@ const RANGE_SMOOTHING_ALPHA: Partial<Record<QiHistoryRange, number>> = {
   "30d": 0.12,
 };
 
+const RANGE_SMOOTHING_SIGMA: Partial<Record<QiHistoryRange, number>> = {
+  "24h": 2.5,
+  "7d": 3.5,
+};
+
 const RANGE_DENSIFY_SEGMENTS: Partial<Record<QiHistoryRange, number>> = {
   "1h": 4,
   "24h": 8,
@@ -249,15 +254,18 @@ function smoothPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiP
 
   for (let i = 0; i < points.length; i++) {
     let sum = 0;
-    let count = 0;
+    let weightSum = 0;
     for (let j = i - halfWindow; j <= i + halfWindow; j++) {
       if (j < 0 || j >= points.length) continue;
-      sum += points[j].price;
-      count += 1;
+      const distance = Math.abs(j - i);
+      const sigma = RANGE_SMOOTHING_SIGMA[range] ?? halfWindow;
+      const weight = Math.exp(-0.5 * Math.pow(distance / Math.max(1e-6, sigma), 2));
+      weightSum += weight;
+      sum += points[j].price * weight;
     }
     movingAveraged.push({
       timestamp: points[i].timestamp,
-      price: sum / Math.max(1, count),
+      price: weightSum > 0 ? sum / weightSum : points[i].price,
       blockNumberHex: points[i].blockNumberHex,
     });
   }
