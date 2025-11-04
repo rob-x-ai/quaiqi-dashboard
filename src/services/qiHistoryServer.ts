@@ -13,16 +13,26 @@ const QI_HISTORY_RANGE_CONFIG = {
 } as const;
 
 const RANGE_BUCKET_MS: Record<QiHistoryRange, number> = {
-  "1h": 60 * 1000, // 1 minute
-  "24h": 10 * 60 * 1000, // 10 minutes
+  "1h": 30 * 1000, // 30 seconds
+  "24h": 5 * 60 * 1000, // 5 minutes
   "7d": 60 * 60 * 1000, // 1 hour
   "30d": 6 * 60 * 60 * 1000, // 6 hours
   "6m": 24 * 60 * 60 * 1000, // 1 day
 };
 
 const RANGE_SMOOTHING_WINDOW: Partial<Record<QiHistoryRange, number>> = {
-  "1h": 3,
-  "24h": 5,
+  "1h": 5,
+  "24h": 7,
+};
+
+const RANGE_SMOOTHING_ALPHA: Partial<Record<QiHistoryRange, number>> = {
+  "1h": 0.35,
+  "24h": 0.3,
+};
+
+const RANGE_DENSIFY_SEGMENTS: Partial<Record<QiHistoryRange, number>> = {
+  "1h": 4,
+  "24h": 4,
 };
 
 export type QiHistoryRange = keyof typeof QI_HISTORY_RANGE_CONFIG;
@@ -197,6 +207,21 @@ export async function fetchQiPriceHistoryFromRpc(range: QiHistoryRange): Promise
     workingPoints = reduced;
   }
 
+  workingPoints = densifyPoints(range, workingPoints);
+
+  if (workingPoints.length > samples) {
+    const stride = Math.ceil(workingPoints.length / samples);
+    const reduced: QiPriceHistoryPoint[] = [];
+    for (let i = 0; i < workingPoints.length; i += stride) {
+      reduced.push(workingPoints[i]);
+    }
+    const lastPoint = workingPoints[workingPoints.length - 1];
+    if (!reduced.length || reduced[reduced.length - 1].timestamp !== lastPoint.timestamp) {
+      reduced.push(lastPoint);
+    }
+    workingPoints = reduced;
+  }
+
   return workingPoints;
 }
 function smoothPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
@@ -206,7 +231,7 @@ function smoothPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiP
   }
 
   const halfWindow = Math.floor(windowSize / 2);
-  const smoothed: QiPriceHistoryPoint[] = [];
+  const movingAveraged: QiPriceHistoryPoint[] = [];
 
   for (let i = 0; i < points.length; i++) {
     let sum = 0;
@@ -216,12 +241,60 @@ function smoothPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiP
       sum += points[j].price;
       count += 1;
     }
-    smoothed.push({
+    movingAveraged.push({
       timestamp: points[i].timestamp,
       price: sum / Math.max(1, count),
       blockNumberHex: points[i].blockNumberHex,
     });
   }
 
-  return smoothed;
+  const alpha = RANGE_SMOOTHING_ALPHA[range];
+  if (!alpha || alpha <= 0 || alpha >= 1) {
+    return movingAveraged;
+  }
+
+  const exponentiallySmoothed: QiPriceHistoryPoint[] = [];
+  let prev = movingAveraged[0].price;
+
+  for (const point of movingAveraged) {
+    const smoothedPrice = alpha * point.price + (1 - alpha) * prev;
+    exponentiallySmoothed.push({
+      timestamp: point.timestamp,
+      price: smoothedPrice,
+      blockNumberHex: point.blockNumberHex,
+    });
+    prev = smoothedPrice;
+  }
+
+  return exponentiallySmoothed;
+}
+
+function densifyPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
+  const segments = RANGE_DENSIFY_SEGMENTS[range];
+  if (!segments || segments <= 1 || points.length < 2) {
+    return points;
+  }
+
+  const result: QiPriceHistoryPoint[] = [];
+
+  for (let i = 0; i < points.length - 1; i++) {
+    const current = points[i];
+    const next = points[i + 1];
+    result.push(current);
+
+    const deltaTime = next.timestamp - current.timestamp;
+    const deltaPrice = next.price - current.price;
+
+    for (let s = 1; s < segments; s++) {
+      const ratio = s / segments;
+      result.push({
+        timestamp: current.timestamp + Math.round(deltaTime * ratio),
+        price: current.price + deltaPrice * ratio,
+        blockNumberHex: current.blockNumberHex,
+      });
+    }
+  }
+
+  result.push(points[points.length - 1]);
+  return result;
 }
