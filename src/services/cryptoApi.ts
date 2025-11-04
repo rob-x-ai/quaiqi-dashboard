@@ -738,7 +738,16 @@ export function getLastUpdatedTime(): number {
 
 // Expose whether QI price has at least two raw samples (for UI gating)
 export function isQiPriceStable(): boolean {
-  return qiRawBuffer.length >= 2 && typeof lastQiUsdPrice === 'number' && lastQiUsdPrice > 0;
+  if (typeof lastQiUsdPrice !== 'number' || lastQiUsdPrice <= 0) {
+    return false;
+  }
+
+  if (qiRawBuffer.length >= 2) {
+    return true;
+  }
+
+  // Allow the very first computed sample through as long as it is positive.
+  return qiRawBuffer.length === 1 && qiRawBuffer[0] > 0;
 }
 
 // Expose last persisted QI price (may come from localStorage on load)
