@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { format } from "date-fns";
 import type { TooltipProps } from "recharts";
+import { ChartLoader } from "@/components/ChartLoader";
 
 interface ChartData {
   timestamp: number;
@@ -234,6 +235,8 @@ export function PriceChart() {
               />
             </LineChart>
           </ResponsiveContainer>
+        ) : isLoading ? (
+          <ChartLoader text="Fetching fresh QI history…" />
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="text-muted-foreground">
