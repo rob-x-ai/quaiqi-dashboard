@@ -14,28 +14,31 @@ const QI_HISTORY_RANGE_CONFIG = {
 
 const RANGE_BUCKET_MS: Record<QiHistoryRange, number> = {
   "1h": 30 * 1000, // 30 seconds
-  "24h": 5 * 60 * 1000, // 5 minutes
-  "7d": 30 * 60 * 1000, // 30 minutes
+  "24h": 60 * 1000, // 1 minute
+  "7d": 10 * 60 * 1000, // 10 minutes
   "30d": 6 * 60 * 60 * 1000, // 6 hours
   "6m": 24 * 60 * 60 * 1000, // 1 day
 };
 
 const RANGE_SMOOTHING_WINDOW: Partial<Record<QiHistoryRange, number>> = {
   "1h": 5,
-  "24h": 7,
-  "7d": 9,
+  "24h": 9,
+  "7d": 17,
+  "30d": 9,
 };
 
 const RANGE_SMOOTHING_ALPHA: Partial<Record<QiHistoryRange, number>> = {
   "1h": 0.35,
-  "24h": 0.3,
-  "7d": 0.25,
+  "24h": 0.2,
+  "7d": 0.14,
+  "30d": 0.12,
 };
 
 const RANGE_DENSIFY_SEGMENTS: Partial<Record<QiHistoryRange, number>> = {
   "1h": 4,
-  "24h": 4,
-  "7d": 2,
+  "24h": 8,
+  "7d": 6,
+  "30d": 2,
 };
 
 export type QiHistoryRange = keyof typeof QI_HISTORY_RANGE_CONFIG;
@@ -134,10 +137,11 @@ export async function fetchQiPriceHistoryFromRpc(range: QiHistoryRange): Promise
     blockInterval,
     maxSamples: samples + 5,
     concurrency:
-      range === "1h" ? 24 :
-      range === "24h" ? 16 :
-      range === "7d" ? 12 :
-      8,
+      range === "1h" ? 32 :
+      range === "24h" ? 28 :
+      range === "7d" ? 20 :
+      range === "30d" ? 16 :
+      12,
   });
 
   if (!snapshots.length) {
@@ -279,6 +283,26 @@ function smoothPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiP
   return exponentiallySmoothed;
 }
 
+function clamp(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) {
+    return (min + max) / 2;
+  }
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
+function catmullRom(y0: number, y1: number, y2: number, y3: number, t: number) {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return 0.5 * (
+    (2 * y1) +
+    (-y0 + y2) * t +
+    (2 * y0 - 5 * y1 + 4 * y2 - y3) * t2 +
+    (-y0 + 3 * y1 - 3 * y2 + y3) * t3
+  );
+}
+
 function densifyPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
   const segments = RANGE_DENSIFY_SEGMENTS[range];
   if (!segments || segments <= 1 || points.length < 2) {
@@ -286,25 +310,59 @@ function densifyPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): Qi
   }
 
   const result: QiPriceHistoryPoint[] = [];
+  let lastTimestamp = Number.NEGATIVE_INFINITY;
 
   for (let i = 0; i < points.length - 1; i++) {
+    const prev = points[i - 1] ?? points[i];
     const current = points[i];
     const next = points[i + 1];
-    result.push(current);
+    const nextNext = points[i + 2] ?? next;
+
+    if (current.timestamp > lastTimestamp) {
+      result.push(current);
+      lastTimestamp = current.timestamp;
+    }
 
     const deltaTime = next.timestamp - current.timestamp;
-    const deltaPrice = next.price - current.price;
+    if (deltaTime <= 0) {
+      continue;
+    }
+
+    const localMin = Math.min(current.price, next.price);
+    const localMax = Math.max(current.price, next.price);
+    const localRange =
+      localMax - localMin ||
+      Math.max(1e-12, Math.max(Math.abs(current.price), Math.abs(next.price)) * 1e-3);
+    const guardMin = localMin - localRange * 0.35;
+    const guardMax = localMax + localRange * 0.35;
 
     for (let s = 1; s < segments; s++) {
       const ratio = s / segments;
+      const timestamp = current.timestamp + Math.round(deltaTime * ratio);
+      if (timestamp <= lastTimestamp) {
+        continue;
+      }
+
+      const interpolatedPrice = catmullRom(
+        prev.price,
+        current.price,
+        next.price,
+        nextNext.price,
+        ratio
+      );
+
       result.push({
-        timestamp: current.timestamp + Math.round(deltaTime * ratio),
-        price: current.price + deltaPrice * ratio,
+        timestamp,
+        price: clamp(interpolatedPrice, Math.min(guardMin, guardMax), Math.max(guardMin, guardMax)),
         blockNumberHex: current.blockNumberHex,
       });
+      lastTimestamp = timestamp;
     }
   }
 
-  result.push(points[points.length - 1]);
+  const lastPoint = points[points.length - 1];
+  if (!result.length || result[result.length - 1].timestamp < lastPoint.timestamp) {
+    result.push(lastPoint);
+  }
   return result;
 }

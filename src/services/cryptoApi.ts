@@ -291,9 +291,8 @@ export async function fetchQiToQuaiSnapshots(options: QiToQuaiSnapshotsOptions):
   const snapshots: QiToQuaiSnapshot[] = [];
   const chunkSize = Math.max(1, Math.floor(concurrency));
 
-  for (let i = 0; i < blockTargets.length; i += chunkSize) {
-    const chunk = blockTargets.slice(i, i + chunkSize);
-    const batch = await Promise.all(
+  const runSerial = async (chunk: bigint[]) => {
+    return Promise.all(
       chunk.map(async (blockNumber) => {
         const blockInfo = await fetchBlockInfo(blockNumber);
         if (!blockInfo) return null;
@@ -308,7 +307,12 @@ export async function fetchQiToQuaiSnapshots(options: QiToQuaiSnapshotsOptions):
         } as QiToQuaiSnapshot;
       })
     );
-    for (const snapshot of batch) {
+  };
+
+  for (let i = 0; i < blockTargets.length; i += chunkSize) {
+    const chunk = blockTargets.slice(i, i + chunkSize);
+    const chunkSnapshots = await runSerial(chunk);
+    for (const snapshot of chunkSnapshots) {
       if (snapshot) snapshots.push(snapshot);
     }
   }

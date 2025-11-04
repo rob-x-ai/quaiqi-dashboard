@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   fetchQiPriceHistoryFromRpc,
   type QiHistoryRange,
@@ -71,6 +71,39 @@ function respond(res: SimpleResponse, status: number, payload: unknown) {
   res.send(JSON.stringify(payload));
 }
 
+interface QiPriceHistoryRow {
+  range: QiHistoryRange;
+  timestamp_ms: number;
+  price: number;
+  block_number_hex: string;
+  fetched_at: string;
+}
+
+async function refreshHistory(range: QiHistoryRange, supabase: SupabaseClient): Promise<QiPriceHistoryRow[] | null> {
+  const history = await fetchQiPriceHistoryFromRpc(range);
+  if (!history.length) {
+    return null;
+  }
+
+  const payload: QiPriceHistoryRow[] = history.map(point => ({
+    range,
+    timestamp_ms: point.timestamp,
+    price: point.price,
+    block_number_hex: point.blockNumberHex,
+    fetched_at: new Date().toISOString(),
+  }));
+
+  const { error: upsertError } = await supabase
+    .from("qi_price_history")
+    .upsert(payload, { onConflict: "range,timestamp_ms" });
+
+  if (upsertError) {
+    console.error("Supabase upsert error:", upsertError);
+  }
+
+  return payload;
+}
+
 export default async function handler(req: SimpleRequest, res: SimpleResponse) {
   try {
     const query = req?.query ?? {};
@@ -85,71 +118,54 @@ export default async function handler(req: SimpleRequest, res: SimpleResponse) {
       return respond(res, 405, { error: "Method not allowed" });
     }
 
-  const rangeParam =
-    typeof query.range === "string"
-      ? query.range
-      : Array.isArray(query.range)
-        ? query.range[0] ?? null
-        : null;
-  const range = normalizeRange(rangeParam);
+    const rangeParam =
+      typeof query.range === "string"
+        ? query.range
+        : Array.isArray(query.range)
+          ? query.range[0] ?? null
+          : null;
+    const range = normalizeRange(rangeParam);
 
-  if (!supabase) {
-    return respond(res, 500, { error: "Supabase is not configured on the server." });
-  }
+    if (!supabase) {
+      return respond(res, 500, { error: "Supabase is not configured on the server." });
+    }
 
-  const { data: cached, error: cachedError } = await supabase
-    .from("qi_price_history")
-    .select("timestamp_ms, price, block_number_hex")
-    .eq("range", range)
-    .order("timestamp_ms", { ascending: true });
+    const { data: cached, error: cachedError } = await supabase
+      .from("qi_price_history")
+      .select("timestamp_ms, price, block_number_hex")
+      .eq("range", range)
+      .order("timestamp_ms", { ascending: true });
 
-  if (cachedError) {
-    console.error("Supabase read error:", cachedError);
-  }
+    if (cachedError) {
+      console.error("Supabase read error:", cachedError);
+    }
 
-  const now = Date.now();
-  const latestCached = cached && cached.length > 0 ? Number(cached[cached.length - 1].timestamp_ms) : 0;
-  const isFresh = cached && cached.length > 0 && now - latestCached < freshnessWindow(range);
+    const now = Date.now();
+    const latestCached = cached && cached.length > 0 ? Number(cached[cached.length - 1].timestamp_ms) : 0;
+    const isFresh = cached && cached.length > 0 && now - latestCached < freshnessWindow(range);
 
-  if (isFresh) {
-    return respond(res, 200, { data: cached, source: "cache" });
-  }
+    if (isFresh) {
+      return respond(res, 200, { data: cached, source: "cache" });
+    }
 
-  try {
-    const history = await fetchQiPriceHistoryFromRpc(range);
+    if (cached && cached.length > 0) {
+      respond(res, 200, { data: cached, source: "cache", stale: true, refreshing: true });
+      void refreshHistory(range, supabase).catch(error => {
+        console.error("Background refresh of QI history failed:", error);
+      });
+      return;
+    }
 
-    if (history.length > 0) {
-      const upsertPayload = history.map(point => ({
-        range,
-        timestamp_ms: point.timestamp,
-        price: point.price,
-        block_number_hex: point.blockNumberHex,
-        fetched_at: new Date().toISOString(),
-      }));
-
-      const { error: upsertError } = await supabase
-        .from("qi_price_history")
-        .upsert(upsertPayload, { onConflict: "range,timestamp_ms" });
-
-      if (upsertError) {
-        console.error("Supabase upsert error:", upsertError);
+    try {
+      const refreshed = await refreshHistory(range, supabase);
+      if (refreshed && refreshed.length > 0) {
+        return respond(res, 200, { data: refreshed, source: "rpc" });
       }
-
-      return respond(res, 200, { data: upsertPayload, source: "rpc" });
+      return respond(res, 503, { error: "Unable to retrieve QI price history." });
+    } catch (error) {
+      console.error("Failed to refresh QI history:", error);
+      return respond(res, 502, { error: "RPC request failed and no cached data is available." });
     }
-
-    if (cached && cached.length > 0) {
-      return respond(res, 200, { data: cached, source: "cache", stale: true });
-    }
-
-    return respond(res, 503, { error: "Unable to retrieve QI price history." });
-  } catch (error) {
-    console.error("Failed to refresh QI history:", error);
-    if (cached && cached.length > 0) {
-      return respond(res, 200, { data: cached, source: "cache", stale: true });
-    }
-    return respond(res, 502, { error: "RPC request failed and no cached data is available." });
-  }
   } catch (error) {
     console.error("Unhandled error in qi-history handler:", error);
     return respond(res, 500, { error: "Internal server error" });

@@ -20,7 +20,7 @@ export function KipperChip({ defaultVisible = true }: { defaultVisible?: boolean
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1 text-xs font-semibold text-primary-foreground underline-offset-2 hover:underline"
       >
-        Earn QUAI on Kipper
+        Earn QUAI on Kipper on 𝕏
         <span aria-hidden>→</span>
       </a>
     </div>
