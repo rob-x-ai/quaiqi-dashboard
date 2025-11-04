@@ -12,9 +12,37 @@ interface ChartData {
 
 type QiHistoryRange = "1h" | "24h" | "7d" | "30d" | "6m";
 
+const REQUEST_TIMEOUT_MS = 20000;
+const MAX_RETRIES = 2;
+
+async function fetchWithRetry(url: string, options: RequestInit, retries = MAX_RETRIES): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeout);
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+      return response;
+    } catch (error) {
+      clearTimeout(timeout);
+      const isLastAttempt = attempt === retries;
+      const isAbortError = error instanceof DOMException && error.name === "AbortError";
+      if (isLastAttempt || !isAbortError) {
+        throw error;
+      }
+      // brief backoff before retrying a timeout
+      await new Promise(resolve => setTimeout(resolve, 750 * (attempt + 1)));
+    }
+  }
+  throw new Error("Unable to fetch data");
+}
+
 export function PriceChart() {
   const [priceData, setPriceData] = useState<ChartData[]>([]);
-  const [timeRange, setTimeRange] = useState<QiHistoryRange>("24h");
+  const [timeRange, setTimeRange] = useState<QiHistoryRange>("1h");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,17 +53,16 @@ export function PriceChart() {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await fetch(`/api/qi-history?range=${timeRange}`, {
-          method: "GET",
-          headers: {
-            "Accept": "application/json",
-          },
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          throw new Error(`Request failed with status ${response.status}`);
-        }
+        const response = await fetchWithRetry(
+          `/api/qi-history?range=${timeRange}`,
+          {
+            method: "GET",
+            headers: {
+              "Accept": "application/json",
+            },
+            cache: "no-store",
+          }
+        );
 
         const payload = await response.json();
         const history = Array.isArray(payload?.data) ? payload.data : [];
@@ -52,10 +79,9 @@ export function PriceChart() {
           );
         }
       } catch (err) {
-        console.error("Failed to fetch QI price history from RPC:", err);
+        console.error("Failed to fetch QI price history:", err);
         if (!cancelled) {
-          setError("Failed to load historical data. Please try again shortly.");
-          setPriceData([]);
+          setError("Unable to load historical data. Retrying shortly…");
         }
       } finally {
         if (!cancelled) {
@@ -128,11 +154,10 @@ export function PriceChart() {
         </div>
       </CardHeader>
       <CardContent className="pt-4 h-[340px]">
-        {error ? (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-muted-foreground text-center px-4">{error}</p>
-          </div>
-        ) : priceData.length > 0 ? (
+        {error && (
+          <div className="mb-2 text-center text-xs text-muted-foreground">{error}</div>
+        )}
+        {priceData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={priceData} margin={{ top: 12, right: 16, left: 8, bottom: 8 }}>
               <CartesianGrid stroke={gridColor} strokeOpacity={0.3} />
@@ -166,7 +191,7 @@ export function PriceChart() {
         ) : (
           <div className="flex items-center justify-center h-full">
             <p className="text-muted-foreground">
-              {isLoading ? "Fetching QI price history from the RPC node..." : "No data available for this range."}
+              {isLoading ? "Fetching QI price history…" : "No data available for this range yet."}
             </p>
           </div>
         )}
