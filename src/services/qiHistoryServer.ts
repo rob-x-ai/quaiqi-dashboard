@@ -209,7 +209,9 @@ export async function fetchQiPriceHistoryFromRpc(range: QiHistoryRange): Promise
   }
   flushBucket();
 
-  let workingPoints = smoothPoints(range, bucketed);
+  let workingPoints = medianFilter(range, bucketed);
+  workingPoints = removeIsolatedSpikes(range, workingPoints);
+  workingPoints = smoothPoints(range, workingPoints);
 
   if (workingPoints.length > samples) {
     const stride = Math.ceil(workingPoints.length / samples);
@@ -242,6 +244,70 @@ export async function fetchQiPriceHistoryFromRpc(range: QiHistoryRange): Promise
   }
 
   return workingPoints;
+}
+function removeIsolatedSpikes(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
+  if (points.length < 3) {
+    return points;
+  }
+
+  const relativeThreshold =
+    range === "1h" ? 0.025 :
+    range === "24h" ? 0.03 :
+    range === "7d" ? 0.04 :
+    0.05;
+
+  const adjusted = [...points];
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1];
+    const current = points[i];
+    const next = points[i + 1];
+
+    const neighborMedian = (prev.price + next.price) / 2;
+    const localScale = Math.max(1e-9, Math.max(Math.abs(prev.price), Math.abs(next.price)));
+    const deviation = Math.abs(current.price - neighborMedian) / localScale;
+    const neighborSpread = Math.abs(prev.price - next.price) / localScale;
+
+    if (deviation > relativeThreshold && neighborSpread < relativeThreshold / 2) {
+      adjusted[i] = {
+        ...current,
+        price: neighborMedian,
+      };
+    }
+  }
+
+  return adjusted;
+}
+function medianFilter(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
+  const windowSize =
+    range === "1h" ? 5 :
+    range === "24h" ? 5 :
+    range === "7d" ? 3 :
+    3;
+
+  if (windowSize <= 1 || points.length <= windowSize) {
+    return points;
+  }
+
+  const half = Math.floor(windowSize / 2);
+  const filtered: QiPriceHistoryPoint[] = [];
+
+  for (let i = 0; i < points.length; i++) {
+    const window: number[] = [];
+    for (let j = i - half; j <= i + half; j++) {
+      if (j < 0 || j >= points.length) continue;
+      window.push(points[j].price);
+    }
+    if (window.length === 0) {
+      filtered.push(points[i]);
+      continue;
+    }
+    const sorted = window.slice().sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+    filtered.push({ ...points[i], price: median });
+  }
+
+  return filtered;
 }
 function smoothPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
   const windowSize = RANGE_SMOOTHING_WINDOW[range];

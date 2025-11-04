@@ -20,7 +20,7 @@ export function KipperChip({ defaultVisible = true }: { defaultVisible?: boolean
         rel="noopener noreferrer"
         className="inline-flex items-center text-[11px] font-semibold text-primary-foreground underline-offset-2 hover:underline"
       >
-        Talk about QUAI on 𝕏 → earn $QUAI tips
+        Earn free $QUAI by posting on 𝕏!
       </a>
     </div>
   );
