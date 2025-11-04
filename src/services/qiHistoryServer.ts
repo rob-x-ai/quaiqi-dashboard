@@ -133,6 +133,11 @@ export async function fetchQiPriceHistoryFromRpc(range: QiHistoryRange): Promise
     endBlock: latestInfo.number,
     blockInterval,
     maxSamples: samples + 5,
+    concurrency:
+      range === "1h" ? 24 :
+      range === "24h" ? 16 :
+      range === "7d" ? 12 :
+      8,
   });
 
   if (!snapshots.length) {

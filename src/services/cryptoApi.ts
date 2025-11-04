@@ -252,6 +252,7 @@ export interface QiToQuaiSnapshotsOptions {
   blockInterval?: bigint | number | string;
   amount?: string;
   maxSamples?: number;
+  concurrency?: number;
 }
 
 export async function fetchQiToQuaiSnapshots(options: QiToQuaiSnapshotsOptions): Promise<QiToQuaiSnapshot[]> {
@@ -261,6 +262,7 @@ export async function fetchQiToQuaiSnapshots(options: QiToQuaiSnapshotsOptions):
     blockInterval,
     amount = "0x3E8",
     maxSamples = 1000,
+    concurrency = 8,
   } = options;
 
   if (maxSamples <= 0) {
@@ -272,7 +274,7 @@ export async function fetchQiToQuaiSnapshots(options: QiToQuaiSnapshotsOptions):
   const step = toStepBigInt(blockInterval);
   const forward = start <= end;
 
-  const snapshots: QiToQuaiSnapshot[] = [];
+  const blockTargets: bigint[] = [];
   let iterations = 0;
 
   for (
@@ -283,22 +285,32 @@ export async function fetchQiToQuaiSnapshots(options: QiToQuaiSnapshotsOptions):
     if (iterations++ >= maxSamples) {
       break;
     }
+    blockTargets.push(current);
+  }
 
-    const blockInfo = await fetchBlockInfo(current);
-    if (!blockInfo) {
-      continue;
+  const snapshots: QiToQuaiSnapshot[] = [];
+  const chunkSize = Math.max(1, Math.floor(concurrency));
+
+  for (let i = 0; i < blockTargets.length; i += chunkSize) {
+    const chunk = blockTargets.slice(i, i + chunkSize);
+    const batch = await Promise.all(
+      chunk.map(async (blockNumber) => {
+        const blockInfo = await fetchBlockInfo(blockNumber);
+        if (!blockInfo) return null;
+        const rate = await fetchQiToQuai(amount, blockInfo.number);
+        const timestamp = blockInfo.timestampMs;
+        return {
+          blockNumber: blockInfo.number.toString(),
+          blockNumberHex: formatBlockHex(blockInfo.number),
+          timestamp,
+          isoTimestamp: new Date(timestamp).toISOString(),
+          rate,
+        } as QiToQuaiSnapshot;
+      })
+    );
+    for (const snapshot of batch) {
+      if (snapshot) snapshots.push(snapshot);
     }
-
-    const rate = await fetchQiToQuai(amount, blockInfo.number);
-    const timestamp = blockInfo.timestampMs;
-
-    snapshots.push({
-      blockNumber: blockInfo.number.toString(),
-      blockNumberHex: formatBlockHex(blockInfo.number),
-      timestamp,
-      isoTimestamp: new Date(timestamp).toISOString(),
-      rate,
-    });
   }
 
   if (!forward) {
