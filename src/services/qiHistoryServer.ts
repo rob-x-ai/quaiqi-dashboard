@@ -14,7 +14,7 @@ const QI_HISTORY_RANGE_CONFIG = {
 
 const RANGE_BUCKET_MS: Record<QiHistoryRange, number> = {
   "1h": 30 * 1000, // 30 seconds
-  "24h": 60 * 1000, // 1 minute
+  "24h": 30 * 1000, // 30 seconds
   "7d": 10 * 60 * 1000, // 10 minutes
   "30d": 6 * 60 * 60 * 1000, // 6 hours
   "6m": 24 * 60 * 60 * 1000, // 1 day
@@ -22,26 +22,26 @@ const RANGE_BUCKET_MS: Record<QiHistoryRange, number> = {
 
 const RANGE_SMOOTHING_WINDOW: Partial<Record<QiHistoryRange, number>> = {
   "1h": 5,
-  "24h": 9,
+  "24h": 21,
   "7d": 17,
   "30d": 9,
 };
 
 const RANGE_SMOOTHING_ALPHA: Partial<Record<QiHistoryRange, number>> = {
   "1h": 0.35,
-  "24h": 0.2,
+  "24h": 0.12,
   "7d": 0.14,
   "30d": 0.12,
 };
 
 const RANGE_SMOOTHING_SIGMA: Partial<Record<QiHistoryRange, number>> = {
-  "24h": 2.5,
+  "24h": 6,
   "7d": 3.5,
 };
 
 const RANGE_DENSIFY_SEGMENTS: Partial<Record<QiHistoryRange, number>> = {
   "1h": 4,
-  "24h": 8,
+  "24h": 16,
   "7d": 6,
   "30d": 2,
 };
