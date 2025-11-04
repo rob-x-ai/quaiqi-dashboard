@@ -73,13 +73,17 @@ function respond(res: SimpleResponse, status: number, payload: unknown) {
 
 export default async function handler(req: SimpleRequest, res: SimpleResponse) {
   try {
-  const query = req?.query ?? {};
-  const supabase = createSupabaseClient();
+    const query = req?.query ?? {};
+    const supabase = createSupabaseClient();
 
-  if (req?.method !== "GET") {
-    res.setHeader("Allow", "GET");
-    return respond(res, 405, { error: "Method not allowed" });
-  }
+    if (req?.method === "HEAD") {
+      return respond(res, 200, { ok: true });
+    }
+
+    if (req?.method !== "GET") {
+      res.setHeader("Allow", "GET, HEAD");
+      return respond(res, 405, { error: "Method not allowed" });
+    }
 
   const rangeParam =
     typeof query.range === "string"
