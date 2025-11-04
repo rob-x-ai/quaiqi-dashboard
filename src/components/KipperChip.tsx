@@ -5,25 +5,24 @@ export function KipperChip({ defaultVisible = true }: { defaultVisible?: boolean
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex max-w-xs items-center gap-3 rounded-full border border-primary/20 bg-gradient-to-r from-primary/90 via-primary to-primary/80 px-4 py-3 text-primary-foreground shadow-2xl">
+    <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-full border border-primary/30 bg-gradient-to-r from-primary/90 to-primary/70 px-3 py-2 text-primary-foreground shadow-lg">
       <button
         onClick={() => setVisible(false)}
         aria-label="Dismiss Kipper CTA"
-        className="rounded-full bg-primary/40 px-2 text-xs font-semibold text-primary-foreground/80 hover:bg-primary/60"
+        className="rounded-full bg-primary/40 px-1 text-[10px] font-semibold text-primary-foreground/80 transition hover:bg-primary/60"
       >
         ×
       </button>
-      <img src="/kipper-logo.png" alt="Kipper" className="h-8 w-8" />
-      <div className="flex flex-col text-left">
-        <span className="text-xs uppercase tracking-wide text-primary-foreground/70">Powered by Quai Network</span>
-        <a
-          href="https://kipper.money/r/cmevbba2a0001ky04elop2ekn"
-          target="_blank"
-          className="text-sm font-semibold text-primary-foreground underline-offset-2 hover:underline"
-        >
-          Earn free QUAI on Kipper
-        </a>
-      </div>
+      <img src="/kipper-logo.png" alt="Kipper" className="h-6 w-6" />
+      <a
+        href="https://kipper.money/r/cmevbba2a0001ky04elop2ekn"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-xs font-semibold text-primary-foreground underline-offset-2 hover:underline"
+      >
+        Earn QUAI on Kipper
+        <span aria-hidden>→</span>
+      </a>
     </div>
   );
 }
