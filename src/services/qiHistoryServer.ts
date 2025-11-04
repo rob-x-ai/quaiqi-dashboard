@@ -2,7 +2,7 @@ import {
   fetchBlockInfo,
   fetchQiToQuaiSnapshots,
   fetchQuaiUsdPrice,
-} from "./cryptoApi";
+} from "./cryptoApi.js";
 
 const QI_HISTORY_RANGE_CONFIG = {
   "1h": { durationMs: 60 * 60 * 1000, samples: 60 },

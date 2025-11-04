@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   fetchQiPriceHistoryFromRpc,
   type QiHistoryRange,
-} from "../src/services/qiHistoryServer";
+} from "../src/services/qiHistoryServer.js";
 
 interface SimpleRequest {
   method?: string;
