@@ -34,9 +34,11 @@ const RANGE_SMOOTHING_ALPHA: Partial<Record<QiHistoryRange, number>> = {
   "30d": 0.12,
 };
 
-const RANGE_SMOOTHING_SIGMA: Partial<Record<QiHistoryRange, number>> = {
-  "24h": 6,
-  "7d": 3.5,
+
+const RANGE_MAD_SIGMA_MULTIPLIER: Partial<Record<QiHistoryRange, number>> = {
+  "1h": 4,
+  "24h": 4.5,
+  "7d": 5,
 };
 
 const RANGE_DENSIFY_SEGMENTS: Partial<Record<QiHistoryRange, number>> = {
@@ -210,6 +212,7 @@ export async function fetchQiPriceHistoryFromRpc(range: QiHistoryRange): Promise
   flushBucket();
 
   let workingPoints = medianFilter(range, bucketed);
+  workingPoints = adaptiveClamp(range, workingPoints);
   workingPoints = removeIsolatedSpikes(range, workingPoints);
   workingPoints = smoothPoints(range, workingPoints);
 
@@ -279,10 +282,10 @@ function removeIsolatedSpikes(range: QiHistoryRange, points: QiPriceHistoryPoint
 }
 function medianFilter(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
   const windowSize =
-    range === "1h" ? 5 :
-    range === "24h" ? 5 :
-    range === "7d" ? 3 :
-    3;
+    range === "1h" ? 11 :
+    range === "24h" ? 13 :
+    range === "7d" ? 7 :
+    5;
 
   if (windowSize <= 1 || points.length <= windowSize) {
     return points;
@@ -301,13 +304,62 @@ function medianFilter(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiP
       filtered.push(points[i]);
       continue;
     }
-    const sorted = window.slice().sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    const median = sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+    const median = computeMedian(window);
     filtered.push({ ...points[i], price: median });
   }
 
   return filtered;
+}
+function computeMedian(values: number[]): number {
+  if (!values.length) return 0;
+  const sorted = values.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+function adaptiveClamp(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
+  const multiplier = RANGE_MAD_SIGMA_MULTIPLIER[range];
+  if (!multiplier || points.length < 5) {
+    return points;
+  }
+
+  const windowSize =
+    range === "1h" ? 31 :
+    range === "24h" ? 49 :
+    range === "7d" ? 51 :
+    31;
+
+  const half = Math.floor(windowSize / 2);
+  const result: QiPriceHistoryPoint[] = [];
+
+  for (let i = 0; i < points.length; i++) {
+    const start = Math.max(0, i - half);
+    const end = Math.min(points.length, i + half + 1);
+    const window = points.slice(start, end).map(p => p.price);
+
+    const median = computeMedian(window);
+    const deviations = window.map(price => Math.abs(price - median));
+    const mad = computeMedian(deviations);
+    const sigmaEstimate = mad * 1.4826;
+    const maxDeviation = sigmaEstimate > 0 ? sigmaEstimate * multiplier : 0;
+
+    if (maxDeviation <= 0) {
+      result.push(points[i]);
+      continue;
+    }
+
+    const diff = points[i].price - median;
+    if (Math.abs(diff) <= maxDeviation) {
+      result.push(points[i]);
+    } else {
+      result.push({
+        ...points[i],
+        price: median + Math.sign(diff) * maxDeviation,
+      });
+    }
+  }
+
+  return result;
 }
 function smoothPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
   const windowSize = RANGE_SMOOTHING_WINDOW[range];
@@ -324,7 +376,7 @@ function smoothPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiP
     for (let j = i - halfWindow; j <= i + halfWindow; j++) {
       if (j < 0 || j >= points.length) continue;
       const distance = Math.abs(j - i);
-      const sigma = RANGE_SMOOTHING_SIGMA[range] ?? halfWindow;
+      const sigma = Math.max(1, halfWindow / 2);
       const weight = Math.exp(-0.5 * Math.pow(distance / Math.max(1e-6, sigma), 2));
       weightSum += weight;
       sum += points[j].price * weight;

@@ -40,13 +40,34 @@ The Supabase table `qi_price_history` expects columns:
 
 ## Clearing cached ranges
 
-When you adjust smoothing parameters you can wipe the cache with:
+When you adjust smoothing parameters or want to purge stale data, run the full cleanup script:
 
 ```bash
 npx tsx --env-file .env.local - <<'TS'
 import { createClient } from '@supabase/supabase-js';
-const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE!, { auth: { persistSession: false } });
-await supabase.from('qi_price_history').delete().in('range', ['1h','24h','7d','30d']);
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseServiceRole = process.env.SUPABASE_SERVICE_ROLE;
+
+if (!supabaseUrl || !supabaseServiceRole) {
+  console.error('Missing Supabase environment variables.');
+  process.exit(1);
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceRole, {
+  auth: { persistSession: false },
+});
+
+const { error } = await supabase
+  .from('qi_price_history')
+  .delete()
+  .in('range', ['1h', '24h', '7d', '30d']);
+
+if (error) {
+  console.error('Failed to clear cache:', error);
+  process.exit(1);
+}
+
 console.log('Cleared cached ranges.');
 TS
 ```
