@@ -49,6 +49,14 @@ const RANGE_DURATION_MS: Record<QiHistoryRange, number> = {
   "6m": 182 * 24 * 60 * 60 * 1000,
 };
 
+const RANGE_ROW_LIMIT: Record<QiHistoryRange, number> = {
+  "1h": 1500,
+  "24h": 5200,
+  "7d": 2600,
+  "30d": 1200,
+  "6m": 2000,
+};
+
 function cacheHeader(range: QiHistoryRange) {
   switch (range) {
     case "1h":
@@ -159,35 +167,52 @@ export default async function handler(req: SimpleRequest, res: SimpleResponse) {
       return respond(res, 500, { error: "Supabase is not configured on the server." });
     }
 
-    const cutoff = Date.now() - (RANGE_DURATION_MS[range] ?? 0) * 1.1;
+  const cutoff = Date.now() - (RANGE_DURATION_MS[range] ?? 0) * 1.1;
 
-    const { data: cached, error: cachedError } = await supabase
-      .from("qi_price_history")
-      .select("timestamp_ms, price, block_number_hex")
-      .eq("range", range)
-      .gte("timestamp_ms", cutoff)
-      .order("timestamp_ms", { ascending: true })
-      .limit(2000);
+  const { data: cached, error: cachedError } = await supabase
+    .from("qi_price_history")
+    .select("timestamp_ms, price, block_number_hex")
+    .eq("range", range)
+    .gte("timestamp_ms", cutoff)
+    .order("timestamp_ms", { ascending: false })
+    .limit(RANGE_ROW_LIMIT[range] ?? 2000);
 
-    if (cachedError) {
-      console.error("Supabase read error:", cachedError);
-    }
+  if (cachedError) {
+    console.error("Supabase read error:", cachedError);
+  }
 
-    const now = Date.now();
-    const latestCached = cached && cached.length > 0 ? Number(cached[cached.length - 1].timestamp_ms) : 0;
-    const isFresh = cached && cached.length > 0 && now - latestCached < freshnessWindow(range);
+  const orderedCached = cached ? [...cached].reverse() : [];
+  const now = Date.now();
+  const latestCached =
+    orderedCached && orderedCached.length > 0
+      ? Number(orderedCached[orderedCached.length - 1].timestamp_ms)
+      : 0;
+  const isFresh =
+    orderedCached &&
+    orderedCached.length > 0 &&
+    now - latestCached < freshnessWindow(range);
 
-    if (isFresh) {
-      return respond(res, 200, { data: cached, source: "cache" }, cacheHeader(range));
-    }
+  if (isFresh) {
+    return respond(
+      res,
+      200,
+      { data: orderedCached, source: "cache" },
+      cacheHeader(range)
+    );
+  }
 
-    if (cached && cached.length > 0) {
-    respond(res, 200, { data: cached, source: "cache", stale: true, refreshing: true }, cacheHeader(range));
-      void refreshHistory(range, supabase).catch(error => {
-        console.error("Background refresh of QI history failed:", error);
-      });
-      return;
-    }
+  if (orderedCached && orderedCached.length > 0) {
+    respond(
+      res,
+      200,
+      { data: orderedCached, source: "cache", stale: true, refreshing: true },
+      cacheHeader(range)
+    );
+    void refreshHistory(range, supabase).catch(error => {
+      console.error("Background refresh of QI history failed:", error);
+    });
+    return;
+  }
 
     try {
       const refreshed = await refreshHistory(range, supabase);
