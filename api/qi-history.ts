@@ -41,6 +41,14 @@ function createSupabaseClient() {
 
 const VALID_RANGES: QiHistoryRange[] = ["1h", "24h", "7d", "30d", "6m"];
 
+const RANGE_DURATION_MS: Record<QiHistoryRange, number> = {
+  "1h": 60 * 60 * 1000,
+  "24h": 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+  "30d": 30 * 24 * 60 * 60 * 1000,
+  "6m": 182 * 24 * 60 * 60 * 1000,
+};
+
 function normalizeRange(value: string | null): QiHistoryRange {
   if (value && VALID_RANGES.includes(value as QiHistoryRange)) {
     return value as QiHistoryRange;
@@ -130,11 +138,15 @@ export default async function handler(req: SimpleRequest, res: SimpleResponse) {
       return respond(res, 500, { error: "Supabase is not configured on the server." });
     }
 
+    const cutoff = Date.now() - (RANGE_DURATION_MS[range] ?? 0) * 1.1;
+
     const { data: cached, error: cachedError } = await supabase
       .from("qi_price_history")
       .select("timestamp_ms, price, block_number_hex")
       .eq("range", range)
-      .order("timestamp_ms", { ascending: true });
+      .gte("timestamp_ms", cutoff)
+      .order("timestamp_ms", { ascending: true })
+      .limit(2000);
 
     if (cachedError) {
       console.error("Supabase read error:", cachedError);
