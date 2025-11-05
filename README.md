@@ -2,9 +2,6 @@
 
 `quai.red` is a real‑time dashboard for tracking QUAI ↔ QI conversion rates, USD benchmarks, and historical on-chain pricing. The project is forked from [dominant-strategies/quaiqi-dashboard](https://github.com/dominant-strategies/quaiqi-dashboard) and has been extended with RPC batching, Supabase caching, and front-end polish tailored for quai.red.
 
-> **Support this project ❤️** 
-If `quai.red` helps you, consider grabbing some free QUAI through my Kipper tipping app referral: [kipper.money/r/cmevbba2a0001ky04elop2ekn](https://kipper.money/r/cmevbba2a0001ky04elop2ekn), or send directly at `0x0037cc0a803Fe5D9a06047B40F049A3B8b2256AC` (`rob.quai`).
-
 ## Features
 
 - **Live conversion quotes** – instant QUAI ⇄ QI rates with slippage-aware calculations.
@@ -78,6 +75,45 @@ TS
 - Supabase (Postgres + PostgREST) for caching
 - Tailwind/Shadcn UI components
 - Vercel serverless functions (`/api/qi-history`)
+
+## API
+
+`GET /api/qi-history` returns smoothed price history for a given range.
+
+### Query parameters
+
+| name   | type   | required | notes                                  |
+|--------|--------|----------|----------------------------------------|
+| `range`| string | no       | One of `1h`, `24h`, `7d`, `30d`, `6m`. Defaults to `24h`.
+
+### Response shape
+
+```json
+{
+  "data": [
+    {
+      "timestamp_ms": 1762200130000,
+      "price": 0.58210128,
+      "block_number_hex": "0x47c472"
+    }
+  ],
+  "source": "cache"
+}
+```
+
+- `source` is either `cache` or `rpc`; when the cache is older than the freshness window, the endpoint returns the cached values and triggers a background refresh.
+- On cache refresh failure you may see `{"error": "RPC request failed..."}` with status 502–503.
+- The data is already smoothed/filtered (median + MAD-based clamp) to remove single-block spikes, so you should not re-smooth on the client.
+
+### Rate limits & caching
+
+- Supabase rows are keyed by `(range, timestamp_ms)`; the cleanup script in this README clears the ranges when smoothing parameters change.
+- Vercel/Cloudflare may edge-cache the response for up to 5 minutes; pass `cache: "no-store"` if you need a fresh fetch from the browser.
+- Direct RPC access is intentionally hidden behind the API to avoid rate-limit issues.
+
+## Support ❤️
+
+If `quai.red` helps you, consider grabbing some free QUAI through my Kipper tipping app referral: [kipper.money/r/cmevbba2a0001ky04elop2ekn](https://kipper.money/r/cmevbba2a0001ky04elop2ekn), or send directly at `0x0037cc0a803Fe5D9a06047B40F049A3B8b2256AC` (`rob.quai`).
 
 ## License
 
