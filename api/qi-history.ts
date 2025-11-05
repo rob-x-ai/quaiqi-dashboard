@@ -49,6 +49,18 @@ const RANGE_DURATION_MS: Record<QiHistoryRange, number> = {
   "6m": 182 * 24 * 60 * 60 * 1000,
 };
 
+function cacheHeader(range: QiHistoryRange) {
+  switch (range) {
+    case "1h":
+    case "24h":
+      return "no-store";
+    case "7d":
+      return "s-maxage=120, stale-while-revalidate=300";
+    default:
+      return "s-maxage=600, stale-while-revalidate=1200";
+  }
+}
+
 function normalizeRange(value: string | null): QiHistoryRange {
   if (value && VALID_RANGES.includes(value as QiHistoryRange)) {
     return value as QiHistoryRange;
@@ -73,9 +85,9 @@ function freshnessWindow(range: QiHistoryRange) {
   }
 }
 
-function respond(res: SimpleResponse, status: number, payload: unknown) {
+function respond(res: SimpleResponse, status: number, payload: unknown, cacheControl = "no-store") {
   res.status(status).setHeader("Content-Type", "application/json");
-  res.setHeader("Cache-Control", "s-maxage=300, stale-while-revalidate=600");
+  res.setHeader("Cache-Control", cacheControl);
   res.send(JSON.stringify(payload));
 }
 
@@ -100,6 +112,15 @@ async function refreshHistory(range: QiHistoryRange, supabase: SupabaseClient): 
     block_number_hex: point.blockNumberHex,
     fetched_at: new Date().toISOString(),
   }));
+
+  const { error: deleteError } = await supabase
+    .from("qi_price_history")
+    .delete()
+    .eq("range", range);
+
+  if (deleteError) {
+    console.error("Supabase delete error:", deleteError);
+  }
 
   const { error: upsertError } = await supabase
     .from("qi_price_history")
@@ -157,11 +178,11 @@ export default async function handler(req: SimpleRequest, res: SimpleResponse) {
     const isFresh = cached && cached.length > 0 && now - latestCached < freshnessWindow(range);
 
     if (isFresh) {
-      return respond(res, 200, { data: cached, source: "cache" });
+      return respond(res, 200, { data: cached, source: "cache" }, cacheHeader(range));
     }
 
     if (cached && cached.length > 0) {
-      respond(res, 200, { data: cached, source: "cache", stale: true, refreshing: true });
+    respond(res, 200, { data: cached, source: "cache", stale: true, refreshing: true }, cacheHeader(range));
       void refreshHistory(range, supabase).catch(error => {
         console.error("Background refresh of QI history failed:", error);
       });
@@ -171,7 +192,7 @@ export default async function handler(req: SimpleRequest, res: SimpleResponse) {
     try {
       const refreshed = await refreshHistory(range, supabase);
       if (refreshed && refreshed.length > 0) {
-        return respond(res, 200, { data: refreshed, source: "rpc" });
+        return respond(res, 200, { data: refreshed, source: "rpc" }, cacheHeader(range));
       }
       return respond(res, 503, { error: "Unable to retrieve QI price history." });
     } catch (error) {
