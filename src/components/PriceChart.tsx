@@ -198,6 +198,28 @@ export function PriceChart() {
     const domainMax = max + padding;
     return [domainMin, domainMax] as [number, number];
   }, [priceData]);
+  const { ticks: priceTicks, decimals: priceTickDecimals } = useMemo(() => {
+    if (!priceDomain) return { ticks: [] as number[], decimals: 2 };
+    const [min, max] = priceDomain;
+    const spread = max - min;
+    if (!Number.isFinite(spread) || spread <= 0) {
+      const value = Number(min.toFixed(6));
+      return { ticks: [value], decimals: 6 };
+    }
+    const steps = 4;
+    const decimals =
+      spread < 5e-5 ? 6 :
+      spread < 5e-4 ? 5 :
+      spread < 5e-3 ? 4 :
+      spread < 5e-2 ? 3 :
+      2;
+
+    const ticks = Array.from({ length: steps + 1 }, (_, index) => {
+      const value = min + (spread / steps) * index;
+      return Number(value.toFixed(decimals));
+    });
+    return { ticks, decimals };
+  }, [priceDomain]);
 
   return (
     <Card className="w-full h-[400px] card-glow">
@@ -220,10 +242,16 @@ export function PriceChart() {
         <div className="relative h-full">
           {priceData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={priceData} margin={{ top: 12, right: 16, left: 8, bottom: 8 }}>
+              <LineChart
+                data={priceData}
+                margin={{ top: 12, right: 4, left: 8, bottom: 8 }}
+              >
                 <CartesianGrid stroke={gridColor} strokeOpacity={0.3} />
                 <XAxis
                   dataKey="timestamp"
+                  type="number"
+                  domain={["dataMin", "dataMax"]}
+                  padding={{ left: 0, right: 0 }}
                   tickFormatter={formatXAxis}
                   stroke={gridColor}
                   tick={{ fontSize: 12, fill: axisColor }}
@@ -232,26 +260,28 @@ export function PriceChart() {
                 />
                 <YAxis
                   domain={priceDomain ?? ["auto", "auto"]}
+                  ticks={priceTicks}
                   stroke={gridColor}
                   tick={{ fontSize: 12, fill: axisColor }}
                   tickLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
                   axisLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
-                tickFormatter={(value) => {
-                  const significantSpread = priceDomain ? (priceDomain[1] - priceDomain[0]) : 0;
-                  const decimals =
-                    significantSpread < 0.0005
-                      ? 6
-                      : significantSpread < 0.005
-                        ? 5
-                        : significantSpread < 0.05
-                          ? 4
-                          : 2;
-                  return `$${value.toFixed(decimals)}`;
-                }}
+                  tickFormatter={(value) => {
+                    const significantSpread = priceDomain ? priceDomain[1] - priceDomain[0] : 0;
+                    const decimals =
+                      priceTickDecimals ||
+                      (significantSpread < 0.0005
+                        ? 6
+                        : significantSpread < 0.005
+                          ? 5
+                          : significantSpread < 0.05
+                            ? 4
+                            : 2);
+                    return `$${value.toFixed(decimals)}`;
+                  }}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Line
-                  type="natural"
+                  type="linear"
                   dataKey="price"
                   strokeWidth={2.5}
                   stroke={lineColor}

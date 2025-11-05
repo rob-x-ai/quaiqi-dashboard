@@ -201,29 +201,32 @@ export default async function handler(req: SimpleRequest, res: SimpleResponse) {
     );
   }
 
-  if (orderedCached && orderedCached.length > 0) {
-    respond(
-      res,
-      200,
-      { data: orderedCached, source: "cache", stale: true, refreshing: true },
-      cacheHeader(range)
-    );
-    void refreshHistory(range, supabase).catch(error => {
-      console.error("Background refresh of QI history failed:", error);
-    });
-    return;
-  }
-
-    try {
-      const refreshed = await refreshHistory(range, supabase);
-      if (refreshed && refreshed.length > 0) {
-        return respond(res, 200, { data: refreshed, source: "rpc" }, cacheHeader(range));
-      }
-      return respond(res, 503, { error: "Unable to retrieve QI price history." });
-    } catch (error) {
-      console.error("Failed to refresh QI history:", error);
-      return respond(res, 502, { error: "RPC request failed and no cached data is available." });
+  try {
+    const refreshed = await refreshHistory(range, supabase);
+    if (refreshed && refreshed.length > 0) {
+      return respond(res, 200, { data: refreshed, source: "rpc" }, cacheHeader(range));
     }
+    if (orderedCached && orderedCached.length > 0) {
+      return respond(
+        res,
+        200,
+        { data: orderedCached, source: "cache", stale: true },
+        cacheHeader(range)
+      );
+    }
+    return respond(res, 503, { error: "Unable to retrieve QI price history." });
+  } catch (error) {
+    console.error("Failed to refresh QI history:", error);
+    if (orderedCached && orderedCached.length > 0) {
+      return respond(
+        res,
+        200,
+        { data: orderedCached, source: "cache", stale: true, error: "Refresh failed" },
+        cacheHeader(range)
+      );
+    }
+    return respond(res, 502, { error: "RPC request failed and no cached data is available." });
+  }
   } catch (error) {
     console.error("Unhandled error in qi-history handler:", error);
     return respond(res, 500, { error: "Internal server error" });
