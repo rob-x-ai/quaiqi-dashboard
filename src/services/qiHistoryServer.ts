@@ -24,7 +24,8 @@ const RANGE_SMOOTHING_WINDOW: Partial<Record<QiHistoryRange, number>> = {
   "1h": 5,
   "24h": 21,
   "7d": 17,
-  "30d": 9,
+  "30d": 11,
+  "6m": 15,
 };
 
 const RANGE_SMOOTHING_ALPHA: Partial<Record<QiHistoryRange, number>> = {
@@ -32,20 +33,23 @@ const RANGE_SMOOTHING_ALPHA: Partial<Record<QiHistoryRange, number>> = {
   "24h": 0.12,
   "7d": 0.14,
   "30d": 0.12,
+  "6m": 0.1,
 };
-
 
 const RANGE_MAD_SIGMA_MULTIPLIER: Partial<Record<QiHistoryRange, number>> = {
   "1h": 4,
   "24h": 4.5,
   "7d": 5,
+  "30d": 5.5,
+  "6m": 6,
 };
 
 const RANGE_DENSIFY_SEGMENTS: Partial<Record<QiHistoryRange, number>> = {
   "1h": 4,
   "24h": 16,
   "7d": 6,
-  "30d": 2,
+  "30d": 3,
+  "6m": 3,
 };
 
 export type QiHistoryRange = keyof typeof QI_HISTORY_RANGE_CONFIG;
@@ -257,6 +261,8 @@ function removeIsolatedSpikes(range: QiHistoryRange, points: QiPriceHistoryPoint
     range === "1h" ? 0.025 :
     range === "24h" ? 0.03 :
     range === "7d" ? 0.04 :
+    range === "30d" ? 0.045 :
+    range === "6m" ? 0.05 :
     0.05;
 
   const adjusted = [...points];
@@ -285,6 +291,8 @@ function medianFilter(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiP
     range === "1h" ? 11 :
     range === "24h" ? 13 :
     range === "7d" ? 7 :
+    range === "30d" ? 9 :
+    range === "6m" ? 11 :
     5;
 
   if (windowSize <= 1 || points.length <= windowSize) {
@@ -327,6 +335,8 @@ function adaptiveClamp(range: QiHistoryRange, points: QiPriceHistoryPoint[]): Qi
     range === "1h" ? 31 :
     range === "24h" ? 49 :
     range === "7d" ? 51 :
+    range === "30d" ? 61 :
+    range === "6m" ? 81 :
     31;
 
   const half = Math.floor(windowSize / 2);

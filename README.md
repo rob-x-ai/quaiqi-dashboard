@@ -61,7 +61,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceRole, {
 const { error } = await supabase
   .from('qi_price_history')
   .delete()
-  .in('range', ['1h', '24h', '7d', '30d']);
+  .in('range', ['1h', '24h', '7d', '30d', '6m']);
 
 if (error) {
   console.error('Failed to clear cache:', error);
