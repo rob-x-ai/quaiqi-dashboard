@@ -189,9 +189,14 @@ export function PriceChart() {
     const sorted = [...values].sort((a, b) => a - b);
     const min = sorted[Math.max(0, Math.floor(sorted.length * 0.02))];
     const max = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.98))];
-    const spread = max - min;
-    const padding = spread > 0 ? spread * 0.08 : (max || 1) * 0.02;
-    return [min - padding, max + padding] as [number, number];
+    let spread = max - min;
+    if (spread <= 0) {
+      spread = Math.max(1e-6, (max || 1) * 0.0005);
+    }
+    const padding = spread * 0.1;
+    const domainMin = min - padding;
+    const domainMax = max + padding;
+    return [domainMin, domainMax] as [number, number];
   }, [priceData]);
 
   return (
@@ -231,11 +236,18 @@ export function PriceChart() {
                   tick={{ fontSize: 12, fill: axisColor }}
                   tickLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
                   axisLine={{ stroke: gridColor, strokeOpacity: 0.4 }}
-                  tickFormatter={(value) => {
-                    const significantSpread = priceDomain ? (priceDomain[1] - priceDomain[0]) : 0;
-                    const decimals = significantSpread < 0.01 ? 4 : 2;
-                    return `$${value.toFixed(decimals)}`;
-                  }}
+                tickFormatter={(value) => {
+                  const significantSpread = priceDomain ? (priceDomain[1] - priceDomain[0]) : 0;
+                  const decimals =
+                    significantSpread < 0.0005
+                      ? 6
+                      : significantSpread < 0.005
+                        ? 5
+                        : significantSpread < 0.05
+                          ? 4
+                          : 2;
+                  return `$${value.toFixed(decimals)}`;
+                }}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Line
