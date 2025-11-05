@@ -186,10 +186,11 @@ export function PriceChart() {
   const priceDomain = useMemo(() => {
     if (!priceData.length) return null;
     const values = priceData.map(point => point.price);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
+    const sorted = [...values].sort((a, b) => a - b);
+    const min = sorted[Math.max(0, Math.floor(sorted.length * 0.02))];
+    const max = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.98))];
     const spread = max - min;
-    const padding = spread > 0 ? spread * 0.1 : (max || 1) * 0.01;
+    const padding = spread > 0 ? spread * 0.08 : (max || 1) * 0.02;
     return [min - padding, max + padding] as [number, number];
   }, [priceData]);
 
