@@ -221,6 +221,26 @@ export function PriceChart() {
     return { ticks, decimals };
   }, [priceDomain]);
 
+  const timeTicks = useMemo(() => {
+    if (!priceData.length) return [];
+    const min = priceData[0].timestamp;
+    const max = priceData[priceData.length - 1].timestamp;
+    if (min >= max) return [min];
+
+    const stepCount =
+      timeRange === "1h" ? 6 :
+      timeRange === "24h" ? 8 :
+      timeRange === "7d" ? 8 :
+      timeRange === "30d" ? 10 :
+      timeRange === "6m" ? 8 :
+      6;
+
+    const interval = (max - min) / stepCount;
+    return Array.from({ length: stepCount + 1 }, (_, index) =>
+      Math.round(min + interval * index)
+    );
+  }, [priceData, timeRange]);
+
   return (
     <Card className="w-full h-[400px] card-glow">
       <CardHeader className="pb-0">
@@ -252,6 +272,8 @@ export function PriceChart() {
                   type="number"
                   domain={["dataMin", "dataMax"]}
                   padding={{ left: 0, right: 0 }}
+                  scale="time"
+                  ticks={timeTicks}
                   tickFormatter={formatXAxis}
                   stroke={gridColor}
                   tick={{ fontSize: 12, fill: axisColor }}
