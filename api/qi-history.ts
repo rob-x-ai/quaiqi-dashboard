@@ -50,11 +50,11 @@ const RANGE_DURATION_MS: Record<QiHistoryRange, number> = {
 };
 
 const RANGE_ROW_LIMIT: Record<QiHistoryRange, number> = {
-  "1h": 1500,
-  "24h": 5200,
-  "7d": 2600,
-  "30d": 1200,
-  "6m": 2000,
+  "1h": 360,
+  "24h": 720,
+  "7d": 960,
+  "30d": 1000,
+  "6m": 1000,
 };
 
 function cacheHeader(range: QiHistoryRange) {
@@ -113,7 +113,22 @@ async function refreshHistory(range: QiHistoryRange, supabase: SupabaseClient): 
     return null;
   }
 
-  const payload: QiPriceHistoryRow[] = history.map(point => ({
+  const limit = RANGE_ROW_LIMIT[range];
+  let trimmed = history;
+  if (typeof limit === "number" && limit > 0 && history.length > limit) {
+    const stride = Math.ceil(history.length / limit);
+    const reduced: typeof history = [];
+    for (let i = 0; i < history.length; i += stride) {
+      reduced.push(history[i]);
+    }
+    const last = history[history.length - 1];
+    if (!reduced.length || reduced[reduced.length - 1].timestamp !== last.timestamp) {
+      reduced.push(last);
+    }
+    trimmed = reduced;
+  }
+
+  const payload: QiPriceHistoryRow[] = trimmed.map(point => ({
     range,
     timestamp_ms: point.timestamp,
     price: point.price,

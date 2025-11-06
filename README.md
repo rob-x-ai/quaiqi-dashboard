@@ -4,11 +4,11 @@
 
 ## Features
 
-- **Live conversion quotes** – instant QUAI ⇄ QI rates with slippage-aware calculations.
-- **USD benchmarks** – QI price is derived from the QUAI/USD feed and refreshed continuously.
-- **Historical charts** – RPC-sourced history up to six months, smoothed and densified for clean visuals.
-- **Serverless caching** – Supabase stores recent ranges, with stale-while-revalidate refresh logic to limit RPC load.
-- **Vercel ready** – designed to run behind Vercel’s `vercel dev` / `vercel deploy` workflow.
+- **Live conversion quotes** - instant QUAI ⇄ QI rates with slippage-aware calculations.
+- **USD benchmarks** - QI price is derived from the QUAI/USD feed and refreshed continuously.
+- **Historical charts** - RPC-sourced history up to six months, smoothed and densified for clean visuals.
+- **Serverless caching** - Supabase stores recent ranges, with stale-while-revalidate refresh logic to limit RPC load.
+- **Vercel ready** - designed to run behind Vercel’s `vercel dev` / `vercel deploy` workflow.
 
 ## Getting Started
 
@@ -78,7 +78,7 @@ TS
 
 ## API
 
-`GET /api/qi-history` returns smoothed price history for a given range.
+`GET /api/qi-history` returns smoothed price history for a given range. When cached data is older than its freshness window the endpoint refreshes synchronously-on success you receive the new values immediately; on failure you fall back to the previous cached snapshot with `stale: true`.
 
 ### Query parameters
 
@@ -97,24 +97,24 @@ TS
       "block_number_hex": "0x47c472"
     }
   ],
-  "source": "cache"
+  "source": "rpc"
 }
 ```
 
-- `source` is either `cache` or `rpc`; when the cache is older than the freshness window, the endpoint returns the cached values and triggers a background refresh.
-- On cache refresh failure you may see `{"error": "RPC request failed..."}` with status 502–503.
-- The data is already smoothed/filtered (median + MAD-based clamp) to remove single-block spikes, so you should not re-smooth on the client.
+- `source` indicates where the data came from. `rpc` means the request was refreshed immediately; `cache` means the API served the previous snapshot (you'll also see `stale: true` in that case).
+- On refresh failure you may see `{"error": "RPC request failed..."}` with status 502-503, or `source: "cache", "stale": true` when a cached backup is returned.
+- The data is already smoothed/filtered (median + MAD-based clamp) and down-sampled to the per-range row limits (roughly 1 h ≈ 360, 24 h ≈ 720, 7 d ≈ 960, 30 d/6 m ≈ 1000 points), so you should not re-smooth on the client.
 
 ### Rate limits & caching
 
-- Supabase rows are keyed by `(range, timestamp_ms)`; the cleanup script in this README clears the ranges when smoothing parameters change.
-- Vercel/Cloudflare may edge-cache the response for up to 5 minutes; pass `cache: "no-store"` if you need a fresh fetch from the browser.
+- Supabase rows are keyed by `(range, timestamp_ms)`; the cleanup script in this README clears the ranges when smoothing parameters change. Each refresh now replaces the entire range snapshot.
+- Cache headers are range-aware: `1h`/`24h` respond with `Cache-Control: no-store`, while longer ranges use short `s-maxage` windows.
 - Direct RPC access is intentionally hidden behind the API to avoid rate-limit issues.
 
 ## Support ❤️
 
-If `quai.red` helps you, consider grabbing some free QUAI through my Kipper tipping app referral: [kipper.money/r/cmevbba2a0001ky04elop2ekn](https://kipper.money/r/cmevbba2a0001ky04elop2ekn), or send directly at `0x0037cc0a803Fe5D9a06047B40F049A3B8b2256AC` (`rob.quai`).
+If `quai.red` helps you, consider grabbing some free QUAI through my Kipper tipping app referral: [kipper.money/r/cmevbba2a0001ky04elop2ekn](https://kipper.money/r/cmevbba2a0001ky04elop2ekn), or send directly at `0x0037cc0a803Fe5D9a06047B40F049A3B8b2256AC` (`red.quai`).
 
 ## License
 
-Apache License 2.0 – see [LICENSE](./LICENSE) for details.
+Apache License 2.0 - see [LICENSE](./LICENSE) for details.
