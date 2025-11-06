@@ -2,7 +2,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { format } from "date-fns";
+import {
+  format,
+  addMinutes,
+  addHours,
+  addDays,
+  addMonths,
+  startOfMinute,
+  startOfHour,
+  startOfDay,
+  startOfMonth,
+} from "date-fns";
 import type { TooltipProps } from "recharts";
 import { ChartLoader } from "@/components/ChartLoader";
 
@@ -228,26 +238,72 @@ export function PriceChart() {
     const max = priceData[priceData.length - 1].timestamp;
     if (min >= max) return [min];
 
-    const minute = 60_000;
-    const hour = 60 * minute;
-    const day = 24 * hour;
+    const align = (date: Date, stepMinutes: number) => {
+      const aligned = startOfMinute(date);
+      const minutes = aligned.getMinutes();
+      const rounded = Math.floor(minutes / stepMinutes) * stepMinutes;
+      aligned.setMinutes(rounded, 0, 0);
+      return aligned;
+    };
 
-    const step =
-      timeRange === "1h" ? 10 * minute :
-      timeRange === "24h" ? 3 * hour :
-      timeRange === "7d" ? day :
-      timeRange === "30d" ? 3 * day :
-      timeRange === "6m" ? 30 * day :
-      3 * hour;
+    const rangeStart = () => {
+      const d = new Date(min);
+      switch (timeRange) {
+        case "1h":
+          return align(d, 10);
+        case "24h": {
+          const start = startOfHour(d);
+          const hour = start.getHours();
+          const rounded = Math.floor(hour / 3) * 3;
+          start.setHours(rounded, 0, 0, 0);
+          return start;
+        }
+        case "7d":
+          return startOfDay(d);
+        case "30d": {
+          const start = startOfDay(d);
+          const day = start.getDate();
+          const rounded = Math.floor((day - 1) / 3) * 3 + 1;
+          start.setDate(rounded);
+          start.setHours(0, 0, 0, 0);
+          return start;
+        }
+        case "6m":
+          return startOfMonth(d);
+        default:
+          return startOfHour(d);
+      }
+    };
+
+    const next = (date: Date) => {
+      switch (timeRange) {
+        case "1h":
+          return addMinutes(date, 10);
+        case "24h":
+          return addHours(date, 3);
+        case "7d":
+          return addDays(date, 1);
+        case "30d":
+          return addDays(date, 3);
+        case "6m":
+          return addMonths(date, 1);
+        default:
+          return addHours(date, 3);
+      }
+    };
 
     const ticks: number[] = [];
-    let cursor = Math.floor(min / step) * step;
-    if (cursor < min) cursor += step;
+    let cursor = rangeStart();
+    while (cursor.getTime() < min) {
+      cursor = next(cursor);
+    }
 
-    while (cursor <= max) {
-      ticks.push(cursor);
-      cursor += step;
-      if (ticks.length > 5000) break; // safety guard
+    const safetyLimit = 1000;
+    let count = 0;
+    while (cursor.getTime() <= max && count < safetyLimit) {
+      ticks.push(cursor.getTime());
+      cursor = next(cursor);
+      count += 1;
     }
 
     if (!ticks.length || ticks[ticks.length - 1] !== max) {
