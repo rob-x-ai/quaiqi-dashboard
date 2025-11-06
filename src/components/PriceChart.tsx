@@ -223,22 +223,38 @@ export function PriceChart() {
 
   const timeTicks = useMemo(() => {
     if (!priceData.length) return [];
+
     const min = priceData[0].timestamp;
     const max = priceData[priceData.length - 1].timestamp;
     if (min >= max) return [min];
 
-    const stepCount =
-      timeRange === "1h" ? 6 :
-      timeRange === "24h" ? 8 :
-      timeRange === "7d" ? 8 :
-      timeRange === "30d" ? 10 :
-      timeRange === "6m" ? 8 :
-      6;
+    const minute = 60_000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
 
-    const interval = (max - min) / stepCount;
-    return Array.from({ length: stepCount + 1 }, (_, index) =>
-      Math.round(min + interval * index)
-    );
+    const step =
+      timeRange === "1h" ? 10 * minute :
+      timeRange === "24h" ? 3 * hour :
+      timeRange === "7d" ? day :
+      timeRange === "30d" ? 3 * day :
+      timeRange === "6m" ? 30 * day :
+      3 * hour;
+
+    const ticks: number[] = [];
+    let cursor = Math.floor(min / step) * step;
+    if (cursor < min) cursor += step;
+
+    while (cursor <= max) {
+      ticks.push(cursor);
+      cursor += step;
+      if (ticks.length > 5000) break; // safety guard
+    }
+
+    if (!ticks.length || ticks[ticks.length - 1] !== max) {
+      ticks.push(max);
+    }
+
+    return ticks;
   }, [priceData, timeRange]);
 
   return (
