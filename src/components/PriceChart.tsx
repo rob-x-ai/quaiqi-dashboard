@@ -53,7 +53,7 @@ async function fetchWithRetry(
 
 export function PriceChart() {
   const [priceData, setPriceData] = useState<ChartData[]>([]);
-  const [timeRange, setTimeRange] = useState<QiHistoryRange>("1h");
+  const [timeRange, setTimeRange] = useState<QiHistoryRange>("24h");
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingMessage, setLoadingMessage] = useState<string>("Loading QI history…");
