@@ -4,6 +4,7 @@ import {
   fetchQuaiUsdPrice,
 } from "./cryptoApi.js";
 
+// Configuration constants
 const QI_HISTORY_RANGE_CONFIG = {
   "1h": { durationMs: 60 * 60 * 1000, samples: 240 },
   "24h": { durationMs: 24 * 60 * 60 * 1000, samples: 288 },
@@ -12,44 +13,30 @@ const QI_HISTORY_RANGE_CONFIG = {
   "6m": { durationMs: 182 * 24 * 60 * 60 * 1000, samples: 186 },
 } as const;
 
+// Minimal bucketing - only aggregate when necessary
 const RANGE_BUCKET_MS: Record<QiHistoryRange, number> = {
-  "1h": 30 * 1000, // 30 seconds
-  "24h": 30 * 1000, // 30 seconds
-  "7d": 10 * 60 * 1000, // 10 minutes
-  "30d": 6 * 60 * 60 * 1000, // 6 hours
-  "6m": 24 * 60 * 60 * 1000, // 1 day
+  "1h": 15_000,       // 15 seconds
+  "24h": 90_000,      // 1.5 minutes
+  "7d": 600_000,      // 10 minutes
+  "30d": 3_600_000,   // 1 hour
+  "6m": 14_400_000,   // 4 hours
 };
 
-const RANGE_SMOOTHING_WINDOW: Partial<Record<QiHistoryRange, number>> = {
-  "1h": 5,
-  "24h": 21,
-  "7d": 17,
-  "30d": 11,
-  "6m": 15,
+// Only remove extreme outliers (likely bad data)
+const OUTLIER_THRESHOLD: Record<QiHistoryRange, number> = {
+  "1h": 0.20,   // 20% instant jump
+  "24h": 0.25,  // 25%
+  "7d": 0.35,   // 35%
+  "30d": 0.50,  // 50%
+  "6m": 0.70,   // 70% - only obvious errors
 };
 
-const RANGE_SMOOTHING_ALPHA: Partial<Record<QiHistoryRange, number>> = {
-  "1h": 0.35,
-  "24h": 0.12,
-  "7d": 0.14,
-  "30d": 0.12,
-  "6m": 0.1,
-};
-
-const RANGE_MAD_SIGMA_MULTIPLIER: Partial<Record<QiHistoryRange, number>> = {
-  "1h": 4,
-  "24h": 4.5,
-  "7d": 5,
-  "30d": 5.5,
-  "6m": 6,
-};
-
-const RANGE_DENSIFY_SEGMENTS: Partial<Record<QiHistoryRange, number>> = {
-  "1h": 4,
-  "24h": 16,
-  "7d": 6,
-  "30d": 3,
-  "6m": 3,
+const CONCURRENCY_LIMIT: Record<QiHistoryRange, number> = {
+  "1h": 32,
+  "24h": 28,
+  "7d": 20,
+  "30d": 16,
+  "6m": 12,
 };
 
 export type QiHistoryRange = keyof typeof QI_HISTORY_RANGE_CONFIG;
@@ -60,7 +47,17 @@ export interface QiPriceHistoryPoint {
   blockNumberHex: string;
 }
 
-async function findBlockAtOrBeforeTimestamp(targetMs: number) {
+interface BlockInfo {
+  number: bigint;
+  timestampMs: number;
+}
+
+/**
+ * Binary search to find the block at or before a target timestamp
+ */
+async function findBlockAtOrBeforeTimestamp(
+  targetMs: number
+): Promise<BlockInfo | null> {
   const latest = await fetchBlockInfo("latest");
   if (!latest) return null;
 
@@ -69,20 +66,14 @@ async function findBlockAtOrBeforeTimestamp(targetMs: number) {
   }
 
   let highInfo = latest;
-  let lowInfo: Awaited<ReturnType<typeof fetchBlockInfo>> = null;
+  let lowInfo: BlockInfo | null = null;
   let step = 1n;
 
-  while (true) {
-    if (highInfo.number === 0n) {
-      lowInfo = highInfo;
-      break;
-    }
-
+  while (highInfo.number > 0n) {
     const candidateNumber = highInfo.number > step ? highInfo.number - step : 0n;
     const candidateInfo = await fetchBlockInfo(candidateNumber);
-    if (!candidateInfo) {
-      break;
-    }
+    
+    if (!candidateInfo) break;
 
     if (candidateInfo.timestampMs <= targetMs || candidateNumber === 0n) {
       lowInfo = candidateInfo;
@@ -93,9 +84,7 @@ async function findBlockAtOrBeforeTimestamp(targetMs: number) {
     step *= 2n;
   }
 
-  if (!lowInfo) {
-    return highInfo;
-  }
+  if (!lowInfo) return highInfo;
 
   let lowNum = lowInfo.number;
   let highNum = highInfo.number;
@@ -103,6 +92,7 @@ async function findBlockAtOrBeforeTimestamp(targetMs: number) {
   while (highNum - lowNum > 1n) {
     const midNum = lowNum + (highNum - lowNum) / 2n;
     const midInfo = await fetchBlockInfo(midNum);
+    
     if (!midInfo) {
       highNum = midNum;
       continue;
@@ -117,18 +107,15 @@ async function findBlockAtOrBeforeTimestamp(targetMs: number) {
     }
   }
 
-  if (highInfo.timestampMs <= targetMs) {
-    return highInfo;
-  }
-
-  return lowInfo;
+  return highInfo.timestampMs <= targetMs ? highInfo : lowInfo;
 }
 
-function normalizeSamples(required: number) {
-  return Math.max(2, Math.min(required, 500));
-}
-
-export async function fetchQiPriceHistoryFromRpc(range: QiHistoryRange): Promise<QiPriceHistoryPoint[]> {
+/**
+ * Main function to fetch and process Qi price history
+ */
+export async function fetchQiPriceHistoryFromRpc(
+  range: QiHistoryRange
+): Promise<QiPriceHistoryPoint[]> {
   const config = QI_HISTORY_RANGE_CONFIG[range];
   const latestInfo = await fetchBlockInfo("latest");
   if (!latestInfo) return [];
@@ -137,29 +124,55 @@ export async function fetchQiPriceHistoryFromRpc(range: QiHistoryRange): Promise
   const startInfo = await findBlockAtOrBeforeTimestamp(targetStart);
   if (!startInfo) return [];
 
-  const samples = normalizeSamples(config.samples);
-  const totalBlocks = latestInfo.number > startInfo.number ? latestInfo.number - startInfo.number : 0n;
+  const samples = Math.max(2, Math.min(config.samples, 500));
+  const totalBlocks = latestInfo.number > startInfo.number 
+    ? latestInfo.number - startInfo.number 
+    : 0n;
+  
   const rawInterval = samples > 1 ? totalBlocks / BigInt(samples - 1) : 0n;
   const blockInterval = rawInterval < 1n ? 1n : rawInterval;
 
+  // Fetch snapshots
   const snapshots = await fetchQiToQuaiSnapshots({
     startBlock: startInfo.number,
     endBlock: latestInfo.number,
     blockInterval,
     maxSamples: samples + 5,
-    concurrency:
-      range === "1h" ? 32 :
-      range === "24h" ? 28 :
-      range === "7d" ? 20 :
-      range === "30d" ? 16 :
-      12,
+    concurrency: CONCURRENCY_LIMIT[range],
   });
 
-  if (!snapshots.length) {
-    return [];
+  if (!snapshots.length) return [];
+
+  // Convert to price points
+  const quaiUsdPrice = await fetchQuaiUsdPrice();
+  let points = convertSnapshotsToPricePoints(snapshots, quaiUsdPrice);
+  
+  if (points.length === 0) return [];
+
+  // Minimal processing pipeline
+  points = bucketPoints(points, RANGE_BUCKET_MS[range]);
+  
+  // Only remove obvious bad data
+  if (points.length >= 3) {
+    points = removeExtremeOutliers(range, points);
   }
 
-  const quaiUsdPrice = await fetchQuaiUsdPrice();
+  return points;
+}
+
+/**
+ * Convert raw snapshots to price points with validation
+ */
+type SnapshotPoint = {
+  timestamp: number;
+  rate: string;
+  blockNumberHex: string;
+};
+
+function convertSnapshotsToPricePoints(
+  snapshots: SnapshotPoint[],
+  quaiUsdPrice: number
+): QiPriceHistoryPoint[] {
   const seen = new Set<number>();
   const points: QiPriceHistoryPoint[] = [];
 
@@ -168,9 +181,10 @@ export async function fetchQiPriceHistoryFromRpc(range: QiHistoryRange): Promise
     seen.add(snapshot.timestamp);
 
     const rateNum = Number.parseInt(snapshot.rate, 16);
-    if (!Number.isFinite(rateNum)) continue;
+    if (!Number.isFinite(rateNum) || rateNum <= 0) continue;
+
     const rateDecimal = rateNum / 1e18;
-    if (!(rateDecimal > 0)) continue;
+    if (rateDecimal <= 0) continue;
 
     points.push({
       timestamp: snapshot.timestamp,
@@ -179,326 +193,161 @@ export async function fetchQiPriceHistoryFromRpc(range: QiHistoryRange): Promise
     });
   }
 
-  points.sort((a, b) => a.timestamp - b.timestamp);
+  return points.sort((a, b) => a.timestamp - b.timestamp);
+}
 
-  const bucketSize = RANGE_BUCKET_MS[range];
+/**
+ * Bucket points - use median to avoid outlier influence
+ */
+function bucketPoints(
+  points: QiPriceHistoryPoint[],
+  bucketSize: number
+): QiPriceHistoryPoint[] {
+  if (points.length === 0) return [];
+
   const bucketed: QiPriceHistoryPoint[] = [];
-  let currentBucket: { key: number; sum: number; count: number; lastTimestamp: number; lastBlock: string } | null = null;
+  let currentBucket: {
+    key: number;
+    prices: number[];
+    timestamps: number[];
+    blocks: string[];
+  } | null = null;
 
   const flushBucket = () => {
-    if (!currentBucket || currentBucket.count === 0) return;
+    if (!currentBucket || currentBucket.prices.length === 0) return;
+    
+    // Use median price and median timestamp for stability
+    const sortedPrices = currentBucket.prices.slice().sort((a, b) => a - b);
+    const sortedTimes = currentBucket.timestamps.slice().sort((a, b) => a - b);
+    const midIdx = Math.floor(sortedPrices.length / 2);
+    
+    const medianPrice = sortedPrices.length % 2 === 0
+      ? (sortedPrices[midIdx - 1] + sortedPrices[midIdx]) / 2
+      : sortedPrices[midIdx];
+    
+    const medianTime = sortedTimes.length % 2 === 0
+      ? (sortedTimes[midIdx - 1] + sortedTimes[midIdx]) / 2
+      : sortedTimes[midIdx];
+    
     bucketed.push({
-      timestamp: currentBucket.lastTimestamp,
-      price: currentBucket.sum / currentBucket.count,
-      blockNumberHex: currentBucket.lastBlock,
+      timestamp: Math.round(medianTime),
+      price: medianPrice,
+      blockNumberHex: currentBucket.blocks[currentBucket.blocks.length - 1],
     });
     currentBucket = null;
   };
 
   for (const point of points) {
     const bucketKey = Math.floor(point.timestamp / bucketSize) * bucketSize;
+    
     if (!currentBucket || bucketKey !== currentBucket.key) {
       flushBucket();
       currentBucket = {
         key: bucketKey,
-        sum: point.price,
-        count: 1,
-        lastTimestamp: point.timestamp,
-        lastBlock: point.blockNumberHex,
+        prices: [point.price],
+        timestamps: [point.timestamp],
+        blocks: [point.blockNumberHex],
       };
     } else {
-      currentBucket.sum += point.price;
-      currentBucket.count += 1;
-      currentBucket.lastTimestamp = point.timestamp;
-      currentBucket.lastBlock = point.blockNumberHex;
+      currentBucket.prices.push(point.price);
+      currentBucket.timestamps.push(point.timestamp);
+      currentBucket.blocks.push(point.blockNumberHex);
     }
   }
+  
   flushBucket();
-
-  let workingPoints = medianFilter(range, bucketed);
-  workingPoints = adaptiveClamp(range, workingPoints);
-  workingPoints = removeIsolatedSpikes(range, workingPoints);
-  workingPoints = smoothPoints(range, workingPoints);
-
-  if (workingPoints.length > samples) {
-    const stride = Math.ceil(workingPoints.length / samples);
-    const reduced: QiPriceHistoryPoint[] = [];
-    for (let i = 0; i < workingPoints.length; i += stride) {
-      reduced.push(workingPoints[i]);
-    }
-    const lastPoint = workingPoints[workingPoints.length - 1];
-    if (!reduced.length || reduced[reduced.length - 1].timestamp !== lastPoint.timestamp) {
-      reduced.push(lastPoint);
-    }
-    workingPoints = reduced;
-  }
-
-  const densifyFactor = RANGE_DENSIFY_SEGMENTS[range] ?? 1;
-  workingPoints = densifyPoints(range, workingPoints);
-
-  const maxSamples = samples * densifyFactor;
-  if (workingPoints.length > maxSamples) {
-    const stride = Math.ceil(workingPoints.length / maxSamples);
-    const reduced: QiPriceHistoryPoint[] = [];
-    for (let i = 0; i < workingPoints.length; i += stride) {
-      reduced.push(workingPoints[i]);
-    }
-    const lastPoint = workingPoints[workingPoints.length - 1];
-    if (!reduced.length || reduced[reduced.length - 1].timestamp !== lastPoint.timestamp) {
-      reduced.push(lastPoint);
-    }
-    workingPoints = reduced;
-  }
-
-  return workingPoints;
-}
-function removeIsolatedSpikes(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
-  if (points.length < 3) {
-    return points;
-  }
-
-  const relativeThreshold =
-    range === "1h" ? 0.025 :
-    range === "24h" ? 0.03 :
-    range === "7d" ? 0.04 :
-    range === "30d" ? 0.045 :
-    range === "6m" ? 0.05 :
-    0.05;
-
-  const adjusted = [...points];
-  for (let i = 1; i < points.length - 1; i++) {
-    const prev = points[i - 1];
-    const current = points[i];
-    const next = points[i + 1];
-
-    const neighborMedian = (prev.price + next.price) / 2;
-    const localScale = Math.max(1e-9, Math.max(Math.abs(prev.price), Math.abs(next.price)));
-    const deviation = Math.abs(current.price - neighborMedian) / localScale;
-    const neighborSpread = Math.abs(prev.price - next.price) / localScale;
-
-    if (deviation > relativeThreshold && neighborSpread < relativeThreshold / 2) {
-      adjusted[i] = {
-        ...current,
-        price: neighborMedian,
-      };
-    }
-  }
-
-  return adjusted;
-}
-function medianFilter(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
-  const windowSize =
-    range === "1h" ? 11 :
-    range === "24h" ? 13 :
-    range === "7d" ? 7 :
-    range === "30d" ? 9 :
-    range === "6m" ? 11 :
-    5;
-
-  if (windowSize <= 1 || points.length <= windowSize) {
-    return points;
-  }
-
-  const half = Math.floor(windowSize / 2);
-  const filtered: QiPriceHistoryPoint[] = [];
-
-  for (let i = 0; i < points.length; i++) {
-    const window: number[] = [];
-    for (let j = i - half; j <= i + half; j++) {
-      if (j < 0 || j >= points.length) continue;
-      window.push(points[j].price);
-    }
-    if (window.length === 0) {
-      filtered.push(points[i]);
-      continue;
-    }
-    const median = computeMedian(window);
-    filtered.push({ ...points[i], price: median });
-  }
-
-  return filtered;
-}
-function computeMedian(values: number[]): number {
-  if (!values.length) return 0;
-  const sorted = values.slice().sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  return bucketed;
 }
 
-function adaptiveClamp(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
-  const multiplier = RANGE_MAD_SIGMA_MULTIPLIER[range];
-  if (!multiplier || points.length < 5) {
-    return points;
-  }
+/**
+ * Remove only extreme outliers - obvious bad data
+ */
+function removeExtremeOutliers(
+  range: QiHistoryRange,
+  points: QiPriceHistoryPoint[]
+): QiPriceHistoryPoint[] {
+  if (points.length < 3) return points;
 
-  const windowSize =
-    range === "1h" ? 31 :
-    range === "24h" ? 49 :
-    range === "7d" ? 51 :
-    range === "30d" ? 61 :
-    range === "6m" ? 81 :
-    31;
-
-  const half = Math.floor(windowSize / 2);
+  const threshold = OUTLIER_THRESHOLD[range];
   const result: QiPriceHistoryPoint[] = [];
 
   for (let i = 0; i < points.length; i++) {
-    const start = Math.max(0, i - half);
-    const end = Math.min(points.length, i + half + 1);
-    const window = points.slice(start, end).map(p => p.price);
+    const current = points[i];
+    
+    // Get surrounding points for context
+    const prevIdx = Math.max(0, i - 1);
+    const nextIdx = Math.min(points.length - 1, i + 1);
+    const prev = points[prevIdx];
+    const next = points[nextIdx];
 
-    const median = computeMedian(window);
-    const deviations = window.map(price => Math.abs(price - median));
-    const mad = computeMedian(deviations);
-    const sigmaEstimate = mad * 1.4826;
-    const maxDeviation = sigmaEstimate > 0 ? sigmaEstimate * multiplier : 0;
+    // Calculate expected range based on neighbors
+    const neighborAvg = (prev.price + next.price) / 2;
+    const neighborMax = Math.max(prev.price, next.price);
+    const neighborMin = Math.min(prev.price, next.price);
+    const neighborSpread = neighborMax - neighborMin;
+    
+    // Calculate how much current point deviates
+    const deviation = Math.abs(current.price - neighborAvg);
+    const relativeDeviation = deviation / Math.max(1e-9, neighborAvg);
 
-    if (maxDeviation <= 0) {
-      result.push(points[i]);
-      continue;
-    }
+    // Only remove if:
+    // 1. Deviation is extreme (above threshold)
+    // 2. Neighbors are relatively stable (spread is small)
+    const isStableNeighborhood = neighborSpread / Math.max(1e-9, neighborAvg) < threshold / 2;
+    const isExtremeDeviation = relativeDeviation > threshold;
 
-    const diff = points[i].price - median;
-    if (Math.abs(diff) <= maxDeviation) {
-      result.push(points[i]);
-    } else {
+    if (isExtremeDeviation && isStableNeighborhood && i !== 0 && i !== points.length - 1) {
+      // Replace with neighbor average
       result.push({
-        ...points[i],
-        price: median + Math.sign(diff) * maxDeviation,
+        ...current,
+        price: neighborAvg,
       });
+    } else {
+      result.push(current);
     }
   }
 
   return result;
 }
-function smoothPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
-  const windowSize = RANGE_SMOOTHING_WINDOW[range];
-  if (!windowSize || windowSize <= 1 || points.length <= windowSize) {
-    return points;
-  }
 
-  const halfWindow = Math.floor(windowSize / 2);
-  const movingAveraged: QiPriceHistoryPoint[] = [];
+/**
+ * Very light smoothing for 1h only - just remove jitter
+ */
+function lightSmooth(points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
+  if (points.length < 5) return points;
+
+  const smoothed: QiPriceHistoryPoint[] = [];
+  const windowSize = 3; // Very small window
 
   for (let i = 0; i < points.length; i++) {
+    if (i === 0 || i === points.length - 1) {
+      // Keep first and last points unchanged
+      smoothed.push(points[i]);
+      continue;
+    }
+
+    // Simple 3-point weighted average
+    const weights = [0.25, 0.50, 0.25]; // Center-weighted
+    const start = Math.max(0, i - 1);
+    const end = Math.min(points.length, i + 2);
+    
     let sum = 0;
     let weightSum = 0;
-    for (let j = i - halfWindow; j <= i + halfWindow; j++) {
-      if (j < 0 || j >= points.length) continue;
-      const distance = Math.abs(j - i);
-      const sigma = Math.max(1, halfWindow / 2);
-      const weight = Math.exp(-0.5 * Math.pow(distance / Math.max(1e-6, sigma), 2));
-      weightSum += weight;
+    
+    for (let j = start; j < end; j++) {
+      const weight = weights[j - start];
       sum += points[j].price * weight;
+      weightSum += weight;
     }
-    movingAveraged.push({
+
+    const smoothedPrice = weightSum > 0 ? sum / weightSum : points[i].price;
+
+    smoothed.push({
       timestamp: points[i].timestamp,
-      price: weightSum > 0 ? sum / weightSum : points[i].price,
+      price: smoothedPrice,
       blockNumberHex: points[i].blockNumberHex,
     });
   }
 
-  const alpha = RANGE_SMOOTHING_ALPHA[range];
-  if (!alpha || alpha <= 0 || alpha >= 1) {
-    return movingAveraged;
-  }
-
-  const exponentiallySmoothed: QiPriceHistoryPoint[] = [];
-  let prev = movingAveraged[0].price;
-
-  for (const point of movingAveraged) {
-    const smoothedPrice = alpha * point.price + (1 - alpha) * prev;
-    exponentiallySmoothed.push({
-      timestamp: point.timestamp,
-      price: smoothedPrice,
-      blockNumberHex: point.blockNumberHex,
-    });
-    prev = smoothedPrice;
-  }
-
-  return exponentiallySmoothed;
-}
-
-function clamp(value: number, min: number, max: number) {
-  if (!Number.isFinite(value)) {
-    return (min + max) / 2;
-  }
-  if (value < min) return min;
-  if (value > max) return max;
-  return value;
-}
-
-function catmullRom(y0: number, y1: number, y2: number, y3: number, t: number) {
-  const t2 = t * t;
-  const t3 = t2 * t;
-  return 0.5 * (
-    (2 * y1) +
-    (-y0 + y2) * t +
-    (2 * y0 - 5 * y1 + 4 * y2 - y3) * t2 +
-    (-y0 + 3 * y1 - 3 * y2 + y3) * t3
-  );
-}
-
-function densifyPoints(range: QiHistoryRange, points: QiPriceHistoryPoint[]): QiPriceHistoryPoint[] {
-  const segments = RANGE_DENSIFY_SEGMENTS[range];
-  if (!segments || segments <= 1 || points.length < 2) {
-    return points;
-  }
-
-  const result: QiPriceHistoryPoint[] = [];
-  let lastTimestamp = Number.NEGATIVE_INFINITY;
-
-  for (let i = 0; i < points.length - 1; i++) {
-    const prev = points[i - 1] ?? points[i];
-    const current = points[i];
-    const next = points[i + 1];
-    const nextNext = points[i + 2] ?? next;
-
-    if (current.timestamp > lastTimestamp) {
-      result.push(current);
-      lastTimestamp = current.timestamp;
-    }
-
-    const deltaTime = next.timestamp - current.timestamp;
-    if (deltaTime <= 0) {
-      continue;
-    }
-
-    const localMin = Math.min(current.price, next.price);
-    const localMax = Math.max(current.price, next.price);
-    const localRange =
-      localMax - localMin ||
-      Math.max(1e-12, Math.max(Math.abs(current.price), Math.abs(next.price)) * 1e-3);
-    const guardMin = localMin - localRange * 0.35;
-    const guardMax = localMax + localRange * 0.35;
-
-    for (let s = 1; s < segments; s++) {
-      const ratio = s / segments;
-      const timestamp = current.timestamp + Math.round(deltaTime * ratio);
-      if (timestamp <= lastTimestamp) {
-        continue;
-      }
-
-      const interpolatedPrice = catmullRom(
-        prev.price,
-        current.price,
-        next.price,
-        nextNext.price,
-        ratio
-      );
-
-      result.push({
-        timestamp,
-        price: clamp(interpolatedPrice, Math.min(guardMin, guardMax), Math.max(guardMin, guardMax)),
-        blockNumberHex: current.blockNumberHex,
-      });
-      lastTimestamp = timestamp;
-    }
-  }
-
-  const lastPoint = points[points.length - 1];
-  if (!result.length || result[result.length - 1].timestamp < lastPoint.timestamp) {
-    result.push(lastPoint);
-  }
-  return result;
+  return smoothed;
 }

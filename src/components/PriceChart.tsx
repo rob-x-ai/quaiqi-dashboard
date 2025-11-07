@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -54,7 +53,6 @@ async function fetchWithRetry(
       if (isLastAttempt || (externalController && isAbortError)) {
         throw error;
       }
-      // brief backoff before retrying a timeout
       await new Promise(resolve => setTimeout(resolve, 750 * (attempt + 1)));
     }
   }
@@ -76,7 +74,6 @@ export function PriceChart() {
     let activeController: AbortController | null = null;
 
     const load = async () => {
-      // Cancel any in-flight request before starting a new one
       if (activeController) {
         activeController.abort();
       }
@@ -87,7 +84,7 @@ export function PriceChart() {
       setError(null);
       setLoadingMessage(
         priceDataRef.current.length > 0
-          ? "Refreshing data – high traffic, please wait…"
+          ? "Refreshing data — high traffic, please wait…"
           : "Loading cached QI history…"
       );
       try {
@@ -130,7 +127,7 @@ export function PriceChart() {
         console.error("Failed to fetch QI price history:", err);
         if (!cancelled) {
           setError("Unable to load historical data. Retrying shortly…");
-          setLoadingMessage("Experiencing heavy traffic – retrying…");
+          setLoadingMessage("Experiencing heavy traffic — retrying…");
         }
       } finally {
         if (activeController === controller) {
@@ -152,7 +149,6 @@ export function PriceChart() {
     };
   }, [timeRange]);
 
-  // Function to format timestamps on X axis
   const formatXAxis = (timestamp: number) => {
     if (timeRange === "1h") {
       return format(new Date(timestamp), "HH:mm");
@@ -169,12 +165,10 @@ export function PriceChart() {
     return format(new Date(timestamp), "MMM yy");
   };
   
-  // Colors derived from CSS variables so they adapt to theme
   const lineColor = "hsl(var(--primary))";
   const gridColor = "hsl(var(--border))";
   const axisColor = "hsl(var(--muted-foreground))";
 
-  // Custom tooltip content
   const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
     const entry = payload && payload.length > 0 ? payload[0] : null;
     const priceValue = typeof entry?.value === "number"
@@ -208,6 +202,7 @@ export function PriceChart() {
     const domainMax = max + padding;
     return [domainMin, domainMax] as [number, number];
   }, [priceData]);
+
   const { ticks: priceTicks, decimals: priceTickDecimals } = useMemo(() => {
     if (!priceDomain) return { ticks: [] as number[], decimals: 2 };
     const [min, max] = priceDomain;
@@ -306,24 +301,30 @@ export function PriceChart() {
       count += 1;
     }
 
-    if (!ticks.length || ticks[ticks.length - 1] !== max) {
+    // Only add the max if it's significantly different from the last tick
+    const lastTick = ticks[ticks.length - 1];
+    if (!lastTick || max - lastTick > (max - min) * 0.1) {
       ticks.push(max);
     }
 
     return ticks;
   }, [priceData, timeRange]);
 
+  // Choose curve type based on timeframe
+  // Use linear interpolation for consistency - no artificial smoothing
+  const curveType = "linear" as const;
+
   return (
-    <Card className="w-full h-[400px] card-glow">
+    <Card className="w-full h-[400px] card-glow overflow-hidden">
       <CardHeader className="pb-0">
         <div className="flex items-center justify-between">
           <CardTitle className="text-xl font-semibold">QI Price History</CardTitle>
-          <div className="flex space-x-2">
-            <Button active={timeRange === "1h"} onClick={() => setTimeRange("1h")}>1H</Button>
-            <Button active={timeRange === "24h"} onClick={() => setTimeRange("24h")}>24H</Button>
-            <Button active={timeRange === "7d"} onClick={() => setTimeRange("7d")}>7D</Button>
-            <Button active={timeRange === "30d"} onClick={() => setTimeRange("30d")}>30D</Button>
-            <Button active={timeRange === "6m"} onClick={() => setTimeRange("6m")}>6M</Button>
+          <div className="flex flex-wrap gap-2">
+            {(["1h", "24h", "7d", "30d", "6m"] as QiHistoryRange[]).map(range => (
+              <Button key={range} active={timeRange === range} onClick={() => setTimeRange(range)}>
+                {range.toUpperCase()}
+              </Button>
+            ))}
           </div>
         </div>
       </CardHeader>
@@ -375,12 +376,13 @@ export function PriceChart() {
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Line
-                  type="linear"
+                  type={curveType}
                   dataKey="price"
                   strokeWidth={2.5}
                   stroke={lineColor}
                   dot={false}
                   activeDot={{ r: 6, stroke: lineColor, strokeWidth: 2, fill: "hsl(var(--background))" }}
+                  isAnimationActive={false}
                 />
               </LineChart>
             </ResponsiveContainer>
