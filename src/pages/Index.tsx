@@ -110,7 +110,7 @@ const Index = () => {
     <div className="flex min-h-screen flex-col">
       <Header />
       
-      <main className="flex-1 space-y-16 pb-16 pt-28">
+      <main className="flex-1 space-y-16 pb-16 pt-[10rem] sm:pt-32 lg:pt-36">
         <section id="metrics" className="container space-y-6">
           <div className="flex flex-col gap-2">
             <p className="section-label text-muted-foreground">Telemetry Panel</p>
