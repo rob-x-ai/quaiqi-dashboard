@@ -31,43 +31,56 @@ export function PriceCard({
   const displayValue = value === "$0.000000 USD" && fallbackValue ? fallbackValue : value;
   
   return (
-    <Card className={cn(
-      "overflow-hidden card-glow relative",
-      "before:absolute before:inset-0 before:-z-10 before:rounded-lg before:bg-quai-red/20",
-      "shadow-[0_0_15px_rgba(226,41,1,0.3)]",
-      className
-    )}>
-      <CardHeader className="pb-2">
+    <Card
+      className={cn(
+        "futuristic-card card-glow relative overflow-hidden border border-black/10 bg-transparent dark:border-white/10",
+        className
+      )}
+      >
+        <span className="grid-overlay opacity-10 dark:opacity-20" aria-hidden="true" />
+      <CardHeader className="pb-1">
         <div className="flex items-center gap-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
+          <CardTitle className="text-[0.65rem] font-normal uppercase tracking-[0.4em] text-muted-foreground">
             {title}
           </CardTitle>
           {tooltip && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Info className="h-4 w-4 text-muted-foreground hover:text-foreground transition-colors cursor-help" />
+                  <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground transition-colors hover:text-foreground" />
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p className="text-xs max-w-[200px]">{tooltip}</p>
+                  <p className="max-w-[220px] text-xs">{tooltip}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="relative space-y-3">
         <div
           className={cn(
-            "text-2xl font-bold transition-opacity",
-            isLoading ? "animate-pulse-gentle" : ""
+            "price-card-value font-display text-3xl leading-tight tracking-[0.08em] transition-opacity lg:text-4xl",
+            isLoading ? "animate-pulse-gentle text-muted-foreground" : "text-foreground"
           )}
         >
           {displayValue}
         </div>
         {subValue && (
-          <p className="mt-1 text-xs text-muted-foreground">{subValue}</p>
+          <p className="text-xs text-muted-foreground">{subValue}</p>
         )}
+        <div className="flex items-center justify-between text-[0.65rem] uppercase tracking-[0.35em] text-muted-foreground">
+          <span>{isLoading ? "Sync Sequence" : "Realtime Feed"}</span>
+          <span className="inline-flex items-center gap-1 font-semibold text-primary">
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                isLoading ? "animate-pulse bg-muted-foreground" : "bg-primary"
+              )}
+            />
+            {isLoading ? "Calibrating" : "Live"}
+          </span>
+        </div>
       </CardContent>
     </Card>
   );

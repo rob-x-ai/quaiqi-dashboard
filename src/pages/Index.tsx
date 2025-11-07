@@ -97,76 +97,89 @@ const Index = () => {
     return () => clearInterval(intervalId);
   }, []);
 
+  const quaiUsdDisplay =
+    quaiUsdPrice > 0
+      ? `$${quaiUsdPrice.toFixed(6)}`
+      : lastValidQuaiUsd.replace(" USD", "") || "$0.000000";
+  const qiUsdDisplay =
+    qiUsdPrice > 0
+      ? `$${qiUsdPrice.toFixed(6)}`
+      : lastValidQiUsd.replace(" USD", "") || "$0.000000";
+
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex min-h-screen flex-col">
       <Header />
       
-      <main className="flex-1 container pt-24 pb-16">
-        <div className="space-y-10">
-          <section>
-            <h1 className="text-3xl font-bold mb-2">quai.red – QUAI/QI</h1>
-            <p className="text-muted-foreground mb-8">
-              Real-time conversion rates, USD benchmarks, and on-chain history for Quai Network’s assets.
+      <main className="flex-1 space-y-16 pb-16 pt-28">
+        <section id="metrics" className="container space-y-6">
+          <div className="flex flex-col gap-2">
+            <p className="section-label text-muted-foreground">Telemetry Panel</p>
+            <h2 className="font-display text-3xl uppercase tracking-[0.2em]">Live Metrics</h2>
+            <p className="max-w-2xl text-sm text-muted-foreground">
+              Cards stream raw conversion data, USD anchors, and signal quality so you can act faster.
             </p>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <PriceCard
-                title="1 QUAI = QI"
-                value={formatRate(qiToQuaiRate, true)}
-                subValue="Live conversion rate"
-                isLoading={isLoading}
-                className="bg-gradient-to-br from-background to-background/90"
-                tooltip="This is the absolute conversion rate without considering slippage. Actual rate may be lower due to slippage and fees."
-              />
-              <PriceCard
-                title="1 QI = QUAI"
-                value={formatRate(qiToQuaiRate)}
-                subValue="Live conversion rate"
-                isLoading={isLoading}
-                className="bg-gradient-to-br from-background to-background/90"
-                tooltip="This is the absolute conversion rate without considering slippage. Actual rate may be lower due to slippage and fees."
-              />
-              <PriceCard
-                title="QUAI Price"
-                value={`$${quaiUsdPrice.toFixed(6)} USD`}
-                subValue="CoinGecko data"
-                isLoading={isLoading}
-                className="bg-gradient-to-br from-background to-background/90"
-                fallbackValue={lastValidQuaiUsd}
-              />
-              <PriceCard
-                title="QI Price"
-                value={`$${qiUsdPrice.toFixed(6)} USD`}
-                subValue="Calculated from QUAI price"
-                isLoading={qiLoading}
-                className="bg-gradient-to-br from-background to-background/90"
-                fallbackValue={lastValidQiUsd}
-              />
-            </div>
-          </section>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <PriceCard
+              title="1 QUAI = QI"
+              value={formatRate(qiToQuaiRate, true)}
+              subValue="Live conversion rate"
+              isLoading={isLoading}
+              tooltip="Absolute on-chain conversion rate between QUAI and QI."
+            />
+            <PriceCard
+              title="1 QI = QUAI"
+              value={formatRate(qiToQuaiRate)}
+              subValue="Live conversion rate"
+              isLoading={isLoading}
+              tooltip="Absolute on-chain conversion rate between QI and QUAI."
+            />
+            <PriceCard
+              title="QUAI Price"
+              value={`$${quaiUsdPrice.toFixed(6)} USD`}
+              subValue="CoinGecko data"
+              isLoading={isLoading}
+              fallbackValue={lastValidQuaiUsd}
+            />
+            <PriceCard
+              title="QI Price"
+              value={`$${qiUsdPrice.toFixed(6)} USD`}
+              subValue="Calculated from QUAI price"
+              isLoading={qiLoading}
+              fallbackValue={lastValidQiUsd}
+            />
+          </div>
+        </section>
+
+        <section
+          id="converter"
+          className="container grid gap-6 lg:grid-cols-2"
+        >
+          <div className="space-y-3">
+            <p className="section-label text-muted-foreground">Swap Estimator</p>
+            <h2 className="text-2xl font-semibold uppercase tracking-[0.2em]">
+              Conversion Calculator
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Calculate how much you receive swapping between QI and QUAI including slippage and fees.
+            </p>
+            <CurrencyConverter
+              qiToQuaiRate={qiToQuaiRate}
+              quaiToQiRate={quaiToQiRate}
+            />
+          </div>
           
-          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <h2 className="text-2xl font-semibold mb-4">Conversion Calculator</h2>
-              <p className="text-sm text-muted-foreground mb-4">
-                Calculate how much you would receive when swapping between QI and QUAI,
-                including slippage and fees.
-              </p>
-              <CurrencyConverter
-                qiToQuaiRate={qiToQuaiRate}
-                quaiToQiRate={quaiToQiRate}
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <h2 className="text-2xl font-semibold mb-4">QI Price Chart</h2>
-              <p className="text-sm text-muted-foreground mb-4">
-                Historical price data for QI in USD
-              </p>
-              <PriceChart />
-            </div>
-          </section>
-        </div>
+          <div className="space-y-3" id="history">
+            <p className="section-label text-muted-foreground">History Stream</p>
+            <h2 className="text-2xl font-semibold uppercase tracking-[0.2em]">
+              QI Price Chart
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Historical price data for QI in USD, refreshed every few minutes directly from the api.
+            </p>
+            <PriceChart />
+          </div>
+        </section>
       </main>
       <Footer />
       <KipperChip />

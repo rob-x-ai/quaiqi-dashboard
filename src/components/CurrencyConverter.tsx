@@ -83,7 +83,7 @@ export function CurrencyConverter({
   };
 
   return (
-    <Card className="w-full card-glow">
+    <Card className="w-full card-glow futuristic-card backdrop-blur">
       <CardHeader>
         <CardTitle className="text-xl font-semibold">
           Currency Converter

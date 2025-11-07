@@ -19,6 +19,25 @@ export default {
       }
     },
     extend: {
+      fontFamily: {
+        sans: [
+          'Space Grotesk',
+          'Inter',
+          'system-ui',
+          'sans-serif',
+        ],
+        display: [
+          'Michroma',
+          'Space Grotesk',
+          'Inter',
+          'sans-serif',
+        ],
+        techno: [
+          'IBM Plex Mono',
+          'Space Grotesk',
+          'monospace',
+        ],
+      },
       colors: {
         // Brand helpers (optional)
         'quai-red': '#E22901',
